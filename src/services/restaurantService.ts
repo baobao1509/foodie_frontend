@@ -35,7 +35,7 @@ export const mapBackendRestaurant = (raw: any) => {
 export const getRestaurants = async (): Promise<any[]> => {
   try {
     // Gọi tới endpoint config qua reverse proxy / Nginx
-    const res = await api.get('/ve/restaurant', { baseURL: '/api' });
+    const res = await api.get('/restaurants');
     const responseData = res.data;
 
     let rawList: any[] = [];

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { UserSummaryDTO, ActivePage } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { UserSummaryDTO } from '../types';
 import { logout as apiLogout, initTokenManager, setOnAuthFailedCallback } from '../api';
 
-export function useAuth(setActivePage: (page: ActivePage) => void) {
+export function useAuth() {
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<UserSummaryDTO | null>(() => {
     const stored = localStorage.getItem('currentUser');
     try {
@@ -12,17 +14,17 @@ export function useAuth(setActivePage: (page: ActivePage) => void) {
     }
   });
 
-  // Khởi động trình quản lý sinh mệnh Token ngầm
+  // Khởi động trình quản lý Token ngầm
   useEffect(() => {
     setOnAuthFailedCallback(() => {
       console.warn('[Session] Session invalidated on background refresh. Logging out user.');
       setCurrentUser(null);
       localStorage.removeItem('currentUser');
-      setActivePage('login');
+      navigate('/login');
     });
 
     initTokenManager();
-  }, [setActivePage]);
+  }, [navigate]);
 
   const handleLoginSuccess = (user: UserSummaryDTO) => {
     setCurrentUser(user);

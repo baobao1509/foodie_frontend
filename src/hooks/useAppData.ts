@@ -3,41 +3,9 @@ import { Restaurant, Order, OrderStatus, OrderTimelineStep, MenuItem } from '../
 import { MOCK_RESTAURANTS } from '../data';
 import { getOrders as apiGetOrders, getRestaurants as apiGetRestaurants } from '../api';
 
-export function useAppData(currentUser: any, activePage: string) {
+export function useAppData(currentUser: any, triggerPath?: string) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>(MOCK_RESTAURANTS);
   const [orders, setOrders] = useState<Order[]>([]);
-
-  // Tự động tải danh sách nhà hàng từ Spring Boot API và map DTO
-  useEffect(() => {
-    const fetchRestaurantsFromBackend = async () => {
-      try {
-        const mappedList = await apiGetRestaurants();
-        if (mappedList && mappedList.length > 0) {
-          setRestaurants(mappedList);
-        }
-      } catch (err) {
-        console.warn('Could not load live restaurants from Spring Boot API, using fallback data:', err);
-      }
-    };
-    fetchRestaurantsFromBackend();
-  }, []);
-
-  // Tự động tải danh sách đơn hàng từ Spring Boot API khi có user đăng nhập
-  useEffect(() => {
-    if (currentUser) {
-      const fetchOrdersFromBackend = async () => {
-        try {
-          const serverOrders = await apiGetOrders();
-          if (Array.isArray(serverOrders)) {
-            setOrders(serverOrders);
-          }
-        } catch (err) {
-          console.warn('Could not load orders from Spring Boot backend, reverting to browser state:', err);
-        }
-      };
-      fetchOrdersFromBackend();
-    }
-  }, [currentUser?.id, activePage]);
 
   // Callback khi KHÁCH đặt đơn hàng mới thành công
   const onPlaceOrder = (newOrder: Order) => {
@@ -130,7 +98,9 @@ export function useAppData(currentUser: any, activePage: string) {
 
   return {
     restaurants,
+    setRestaurants,
     orders,
+    setOrders,
     onPlaceOrder,
     onUpdateOrderStatus,
     onAddMenuItem,

@@ -1,26 +1,19 @@
 import React, { useState } from 'react';
-import { Restaurant, MenuItem, Order, OrderStatus } from '../types';
+import { useOutletContext } from 'react-router-dom';
+import { AppContextType, Restaurant, MenuItem, Order, OrderStatus } from '../types';
 import { ToggleLeft, ToggleRight, Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2 } from 'lucide-react';
 import AddDishForm from '../components/partner/AddDishForm';
 import StoreStatusToggle from '../components/partner/StoreStatusToggle';
 
-interface PartnerDashboardProps {
-  restaurants: Restaurant[];
-  orders: Order[];
-  onToggleStoreState: (restaurantId: string) => void;
-  onAddMenuItem: (restaurantId: string, item: MenuItem) => void;
-  onRemoveMenuItem: (restaurantId: string, itemId: string) => void;
-  onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
-}
-
-export default function PartnerDashboard({
-  restaurants,
-  orders,
-  onToggleStoreState,
-  onAddMenuItem,
-  onRemoveMenuItem,
-  onUpdateOrderStatus
-}: PartnerDashboardProps) {
+export default function PartnerDashboard() {
+  const {
+    restaurants,
+    orders,
+    onToggleStoreState,
+    onAddMenuItem,
+    onRemoveMenuItem,
+    onUpdateOrderStatus,
+  } = useOutletContext<AppContextType>();
   // Choose which restaurant inside partner credentials dashboard
   const [selectedResId, setSelectedResId] = useState(restaurants[0]?.id || '');
 

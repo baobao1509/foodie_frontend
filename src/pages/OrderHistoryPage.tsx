@@ -1,15 +1,41 @@
-import React from 'react';
-import { Order, OrderStatus } from '../types';
-import { ChevronRight, CreditCard, Landmark, Wallet, Truck, ShoppingBag, Clock, HeartHandshake } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { AppContextType, Order, OrderStatus } from '../types';
+import { ChevronRight, CreditCard, Landmark, Wallet, Truck, ShoppingBag, Clock, HeartHandshake, Loader } from 'lucide-react';
 import OrderTimeline from '../components/orders/OrderTimeline';
+import { getOrders as apiGetOrders } from '../api';
 
-interface OrderHistoryPageProps {
-  orders: Order[];
-  onSimulateStatus: (orderId: string, nextStatus: OrderStatus) => void;
-  setActivePage: (page: 'home' | 'restaurant' | 'cart' | 'orders' | 'partner') => void;
-}
+export default function OrderHistoryPage() {
+  const navigate = useNavigate();
+  const { orders, setOrders, currentUser, onUpdateOrderStatus: onSimulateStatus } = useOutletContext<AppContextType>();
+  const [isLoading, setIsLoading] = useState(false);
 
-export default function OrderHistoryPage({ orders, onSimulateStatus, setActivePage }: OrderHistoryPageProps) {
+  // Fetch orders directly in components viewport on mount
+  useEffect(() => {
+    if (currentUser) {
+      let active = true;
+      const fetchOrdersDirectly = async () => {
+        setIsLoading(true);
+        try {
+          const serverOrders = await apiGetOrders();
+          if (active && Array.isArray(serverOrders)) {
+            setOrders(serverOrders);
+          }
+        } catch (err) {
+          console.warn('Could not load orders directly from OrderHistoryPage:', err);
+        } finally {
+          if (active) {
+            setIsLoading(false);
+          }
+        }
+      };
+      fetchOrdersDirectly();
+
+      return () => {
+        active = false;
+      };
+    }
+  }, [currentUser, setOrders]);
   
   // Format payment method text description
   const getPaymentMethodLabel = (method: string) => {
@@ -48,6 +74,15 @@ export default function OrderHistoryPage({ orders, onSimulateStatus, setActivePa
     }
   };
 
+  if (isLoading && orders.length === 0) {
+    return (
+      <div className="bg-gray-50 min-h-screen py-24 text-center flex flex-col items-center justify-center">
+        <Loader className="w-10 h-10 animate-spin text-orange-500 mb-4" />
+        <p className="text-sm font-semibold text-gray-500">Đang đồng bộ hành trình đơn hàng trực tuyến...</p>
+      </div>
+    );
+  }
+
   if (orders.length === 0) {
     return (
       <div className="bg-gray-50 min-h-screen py-16 px-4 text-center">
@@ -56,7 +91,7 @@ export default function OrderHistoryPage({ orders, onSimulateStatus, setActivePa
           <h2 className="text-xl font-extrabold text-gray-900 mt-4 mb-2">Chưa có thông tin đơn hàng</h2>
           <p className="text-sm text-gray-500 mb-6">Bạn chưa đặt đơn hàng nào trên hệ thống cả. Hãy thưởng thức các vị ngon nóng sốt chỉ sau vài click chuột tại trang chủ!</p>
           <button
-            onClick={() => setActivePage('home')}
+            onClick={() => navigate('/')}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer shadow-xs"
           >
             Tìm vị ngon nóng sốt ngay

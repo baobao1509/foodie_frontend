@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserRole } from '../types';
 import { Lock, User, AlertCircle, CheckCircle2, Eye, EyeOff, Phone, Briefcase } from 'lucide-react';
 import { register as apiRegister } from '../api';
 
-interface RegisterPageProps {
-  setActivePage: (page: 'home' | 'restaurant' | 'cart' | 'orders' | 'partner' | 'login' | 'register') => void;
-}
-
-export default function RegisterPage({ setActivePage }: RegisterPageProps) {
+export default function RegisterPage() {
+  const navigate = useNavigate();
   // Input fields state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,7 +43,7 @@ export default function RegisterPage({ setActivePage }: RegisterPageProps) {
         password: password,
         fullName: fullName.trim(),
         phone: phone.trim() || undefined,
-        role: "CUSTOMER",
+        role: role,
       };
 
       await apiRegister(payload);
@@ -54,7 +52,7 @@ export default function RegisterPage({ setActivePage }: RegisterPageProps) {
       
       // Auto transition to login page
       setTimeout(() => {
-        setActivePage('login');
+        navigate('/login');
       }, 1800);
     } catch (err: any) {
       console.error(err);
@@ -137,6 +135,24 @@ export default function RegisterPage({ setActivePage }: RegisterPageProps) {
               </div>
             </div>
 
+            {/* Role Selection */}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 px-0.5">
+                Vai trò thành viên
+              </label>
+              <div className="relative">
+                <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-xs font-bold text-gray-800 outline-hidden focus:ring-2 focus:ring-orange-500/10 appearance-none"
+                >
+                  <option value={UserRole.USER}>Khách hàng mua sắm (USER)</option>
+                  <option value={UserRole.PARTNER}>Nhà hàng Đối tác (PARTNER)</option>
+                  <option value={UserRole.ADMIN}>Quản trị viên (ADMIN)</option>
+                </select>
+              </div>
+            </div>
 
             {/* Password */}
             <div>
@@ -208,7 +224,7 @@ export default function RegisterPage({ setActivePage }: RegisterPageProps) {
             <p className="text-xs text-gray-500 font-medium">
               Bạn đã có tài khoản rồi?{' '}
               <button
-                onClick={() => setActivePage('login')}
+                onClick={() => navigate('/login')}
                 className="text-orange-600 font-bold hover:underline cursor-pointer"
               >
                 Đăng nhập ngay

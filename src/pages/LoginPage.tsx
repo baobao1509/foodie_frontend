@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { UserSummaryDTO, ActivePage } from '../types';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { AppContextType, UserSummaryDTO, ActivePage, UserRole } from '../types';
 import { Lock, User, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { login as apiLogin } from '../api';
 
-interface LoginPageProps {
-  onLoginSuccess: (user: UserSummaryDTO) => void;
-  setActivePage: (page: ActivePage) => void;
-}
-
-export default function LoginPage({ onLoginSuccess, setActivePage }: LoginPageProps) {
+export default function LoginPage() {
+  const navigate = useNavigate();
+  const { handleLoginSuccess: onLoginSuccess } = useOutletContext<AppContextType>();
   // Input fields state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +37,12 @@ export default function LoginPage({ onLoginSuccess, setActivePage }: LoginPagePr
         setSuccessMessage('Đăng nhập thành công!');
         setTimeout(() => {
           onLoginSuccess(userData);
-          setActivePage('home');
+          // Redirect smart based on role
+          if (userData.role === UserRole.PARTNER || userData.role === UserRole.ADMIN) {
+            navigate('/partner');
+          } else {
+            navigate('/');
+          }
         }, 1500);
       } else {
         throw new Error('Dữ liệu trả về không đúng định dạng chứa thông tin tài khoản!');
@@ -156,7 +159,7 @@ export default function LoginPage({ onLoginSuccess, setActivePage }: LoginPagePr
             <p className="text-xs text-gray-500 font-medium font-sans">
               Chưa có tài khoản thành viên?{' '}
               <button
-                onClick={() => setActivePage('register')}
+                onClick={() => navigate('/register')}
                 className="text-orange-600 font-black hover:underline cursor-pointer transition-colors"
               >
                 Đăng ký ngay tại đây

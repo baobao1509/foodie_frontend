@@ -1,35 +1,31 @@
 import React, { useState } from 'react';
-import { CartItem, Order } from '../types';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { AppContextType, Order } from '../types';
 import { PROMO_CODES } from '../data';
 import { Trash2, Plus, Minus, CreditCard, Tag, Landmark, Wallet, Truck, AlertCircle } from 'lucide-react';
 
-interface CartPageProps {
-  cart: CartItem[];
-  restaurantId: string | null;
-  restaurantName: string;
-  restaurantAddress: string;
-  deliveryFee: number;
-  minOrderValue: number;
-  updateCartItemQty: (itemId: string, diff: number) => void;
-  removeFromCart: (itemId: string) => void;
-  onPlaceOrder: (order: Order) => void;
-  setActivePage: (page: 'home' | 'restaurant' | 'cart' | 'orders' | 'partner') => void;
-  clearCart: () => void;
-}
+export default function CartPage() {
+  const navigate = useNavigate();
+  const {
+    cart,
+    updateCartItemQty,
+    removeFromCart,
+    onPlaceOrder,
+    clearCart,
+    cartMeta,
+    restaurants,
+  } = useOutletContext<AppContextType>();
 
-export default function CartPage({
-  cart,
-  restaurantId,
-  restaurantName,
-  restaurantAddress,
-  deliveryFee,
-  minOrderValue,
-  updateCartItemQty,
-  removeFromCart,
-  onPlaceOrder,
-  setActivePage,
-  clearCart,
-}: CartPageProps) {
+  const {
+    name: restaurantName,
+    address: restaurantAddress,
+    deliveryFee,
+    minOrderValue,
+  } = cartMeta;
+
+  const sampleItem = cart[0]?.menuItem;
+  const currentRes = restaurants.find(r => r.menu.some(m => m.id === sampleItem?.id));
+  const restaurantId = currentRes?.id || null;
   // Recipient details form states
   const [recipientName, setRecipientName] = useState('Nguyễn Gia Bảo');
   const [recipientPhone, setRecipientPhone] = useState('0901234567');
@@ -127,7 +123,7 @@ export default function CartPage({
 
     onPlaceOrder(newOrder);
     clearCart();
-    setActivePage('orders');
+    navigate('/orders');
   };
 
   if (cart.length === 0) {
@@ -138,7 +134,7 @@ export default function CartPage({
           <h2 className="text-xl font-extrabold text-gray-950 mt-4 mb-2">Giỏ hàng của bạn đang trống</h2>
           <p className="text-sm text-gray-500 mb-6">Bạn chưa có món ăn ngon nào trong giỏ hàng cả. Hãy ghé trang chủ để lựa chọn một vài món yêu thích nhé!</p>
           <button
-            onClick={() => setActivePage('home')}
+            onClick={() => navigate('/')}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer shadow-xs"
           >
             Quay lại tìm món ngon

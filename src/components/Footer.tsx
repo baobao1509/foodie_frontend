@@ -1,11 +1,8 @@
 import React from 'react';
-import { ActivePage } from '../types';
+import { useNavigate } from 'react-router-dom';
 
-interface FooterProps {
-  setActivePage: (page: ActivePage) => void;
-}
-
-export default function Footer({ setActivePage }: FooterProps) {
+export default function Footer() {
+  const navigate = useNavigate();
   return (
     <footer className="bg-gray-900 text-gray-400 py-12 px-6 border-t border-gray-800">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -30,7 +27,7 @@ export default function Footer({ setActivePage }: FooterProps) {
               {sec.links.map((link) => (
                 <li key={link}>
                   <button 
-                    onClick={() => setActivePage('home')} 
+                    onClick={() => navigate('/')} 
                     className="hover:text-orange-500 transition-colors cursor-pointer text-left"
                   >
                     {link}

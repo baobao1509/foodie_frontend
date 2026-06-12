@@ -77,3 +77,29 @@ export interface UserSummaryDTO {
 }
 
 export type ActivePage = 'home' | 'restaurant' | 'cart' | 'orders' | 'partner' | 'login' | 'register';
+
+export interface AppContextType {
+  restaurants: Restaurant[];
+  setRestaurants: (restaurants: Restaurant[]) => void;
+  orders: Order[];
+  setOrders: (orders: Order[]) => void;
+  currentUser: UserSummaryDTO | null;
+  handleLoginSuccess: (user: UserSummaryDTO) => void;
+  handleLogout: () => Promise<void>;
+  cart: CartItem[];
+  addToCart: (item: MenuItem, notes?: string) => void;
+  updateCartItemQty: (itemId: string, diff: number) => void;
+  removeFromCart: (itemId: string) => void;
+  clearCart: () => void;
+  cartMeta: {
+    name: string;
+    deliveryFee: number;
+    minOrderValue: number;
+    address: string;
+  };
+  onPlaceOrder: (newOrder: Order) => void;
+  onUpdateOrderStatus: (orderId: string, nextStatus: OrderStatus) => void;
+  onAddMenuItem: (restaurantId: string, item: MenuItem) => void;
+  onToggleStoreState: (restaurantId: string) => void;
+  onRemoveMenuItem: (restaurantId: string, itemId: string) => void;
+}

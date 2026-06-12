@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
-import { Restaurant, MenuItem, CartItem } from '../types';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { AppContextType } from '../types';
 import { ArrowLeft, Star, MapPin, Clock, Truck, ShoppingBag } from 'lucide-react';
 import DishCard from '../components/restaurant/DishCard';
 
-interface RestaurantDetailPageProps {
-  restaurant: Restaurant | undefined;
-  onBack: () => void;
-  cart: CartItem[];
-  addToCart: (item: MenuItem, notes?: string) => void;
-  updateCartItemQty: (itemId: string, diff: number) => void;
-  onGoToCart: () => void;
-}
+export default function RestaurantDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { restaurants, cart, addToCart, updateCartItemQty } = useOutletContext<AppContextType>();
 
-export default function RestaurantDetailPage({
-  restaurant,
-  onBack,
-  cart,
-  addToCart,
-  updateCartItemQty,
-  onGoToCart
-}: RestaurantDetailPageProps) {
   const [selectedSubCat, setSelectedSubCat] = useState('all');
+
+  const restaurant = restaurants.find((r) => r.id === id);
+
+  const onBack = () => {
+    navigate('/');
+  };
+
+  const onGoToCart = () => {
+    navigate('/cart');
+  };
 
   if (!restaurant) {
     return (

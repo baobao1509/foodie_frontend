@@ -1,25 +1,33 @@
 import React, { useState } from 'react';
-import { ActivePage, CartItem, UserSummaryDTO, UserRole } from '../types';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { CartItem, UserSummaryDTO, UserRole } from '../types';
 import { ShoppingBag, History, ChefHat, Home, User, LogOut, ChevronDown } from 'lucide-react';
 
 interface NavbarProps {
-  activePage: ActivePage;
-  setActivePage: (page: ActivePage) => void;
   cart: CartItem[];
   currentOrderCount: number;
   currentUser: UserSummaryDTO | null;
   onLogout: () => void;
 }
 
-export default function Navbar({ activePage, setActivePage, cart, currentOrderCount, currentUser, onLogout }: NavbarProps) {
+export default function Navbar({ cart, currentOrderCount, currentUser, onLogout }: NavbarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  const pathname = location.pathname;
+  const isHomeActive = pathname === '/' || pathname.startsWith('/restaurant');
+  const isCartActive = pathname === '/cart';
+  const isOrdersActive = pathname === '/orders';
+  const isPartnerActive = pathname === '/partner';
+  const isLoginActive = pathname === '/login' || pathname === '/register';
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-xs px-4 md:px-8 h-18 flex items-center justify-between">
       {/* Logo */}
       <div 
-        onClick={() => setActivePage('home')}
+        onClick={() => navigate('/')}
         className="flex items-center gap-2 cursor-pointer group"
       >
         <span className="text-3xl transition-transform group-hover:rotate-12 duration-200">🍜</span>
@@ -34,9 +42,9 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
       {/* Navigation Options */}
       <div className="flex items-center gap-1 md:gap-3">
         <button
-          onClick={() => setActivePage('home')}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-            activePage === 'home' || activePage === 'restaurant'
+          onClick={() => navigate('/')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+            isHomeActive
               ? 'bg-orange-50 text-orange-600'
               : 'text-gray-600 hover:bg-gray-50'
           }`}
@@ -46,9 +54,9 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
         </button>
 
         <button
-          onClick={() => setActivePage('cart')}
-          className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-            activePage === 'cart'
+          onClick={() => navigate('/cart')}
+          className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+            isCartActive
               ? 'bg-orange-50 text-orange-600'
               : 'text-gray-600 hover:bg-gray-50'
           }`}
@@ -63,9 +71,9 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
         </button>
 
         <button
-          onClick={() => setActivePage('orders')}
-          className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-            activePage === 'orders'
+          onClick={() => navigate('/orders')}
+          className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+            isOrdersActive
               ? 'bg-orange-50 text-orange-600'
               : 'text-gray-600 hover:bg-gray-50'
           }`}
@@ -87,10 +95,14 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
               alert('Chỉ tài khoản đối tác (PARTNER) hoặc quản trị (ADMIN) mới có quyền truy cập Kênh Nhà Hàng. Vui lòng chuyển sang tài khoản đối tác bằng việc đăng nhập lại!');
               return;
             }
-            setActivePage('partner');
+            if (!currentUser) {
+              navigate('/login');
+              return;
+            }
+            navigate('/partner');
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all ${
-            activePage === 'partner'
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+            isPartnerActive
               ? 'bg-emerald-600 text-white shadow-xs'
               : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
           }`}
@@ -146,7 +158,7 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
                     onClick={() => {
                       setShowProfileDropdown(false);
                       onLogout();
-                      setActivePage('home');
+                      navigate('/');
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl transition-all cursor-pointer"
                   >
@@ -159,9 +171,9 @@ export default function Navbar({ activePage, setActivePage, cart, currentOrderCo
           </div>
         ) : (
           <button
-            onClick={() => setActivePage('login')}
+            onClick={() => navigate('/login')}
             className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-bold border transition-all cursor-pointer ${
-              activePage === 'login'
+              isLoginActive
                 ? 'bg-orange-600 text-white border-orange-600'
                 : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 shadow-xs'
             }`}

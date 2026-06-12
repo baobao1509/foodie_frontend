@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ActivePage, UserRole } from './types';
 
 // Components & Pages imports
 import Navbar from './components/Navbar';
@@ -18,24 +18,24 @@ import { useAuth } from './hooks/useAuth';
 import { useAppData } from './hooks/useAppData';
 import { useCart } from './hooks/useCart';
 
-export default function App() {
-  // Navigation Routing States
-  const [activePage, setActivePage] = useState<ActivePage>('home');
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
+function AppLayout() {
+  const location = useLocation();
 
   // 1. Quản lý phiên đăng nhập (Session & Token JWT)
-  const { currentUser, handleLoginSuccess, handleLogout } = useAuth(setActivePage);
+  const { currentUser, handleLoginSuccess, handleLogout } = useAuth();
 
   // 2. Quản lý dữ liệu ứng dụng đồng bộ từ Backend Spring Boot
   const {
     restaurants,
+    setRestaurants,
     orders,
+    setOrders,
     onPlaceOrder,
     onUpdateOrderStatus,
     onAddMenuItem,
     onToggleStoreState,
     onRemoveMenuItem,
-  } = useAppData(currentUser, activePage);
+  } = useAppData(currentUser, location.pathname);
 
   // 3. Quản lý giỏ hàng và các thao tác tính toán liên quan
   const {
@@ -47,17 +47,14 @@ export default function App() {
     cartMeta,
   } = useCart(restaurants);
 
-  // Xác định thông tin chi tiết nhà hàng đang được chọn xem
-  const selectedRestaurant = restaurants.find((r) => r.id === selectedRestaurantId);
+  const currentOrderCount = orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 text-gray-900 font-sans antialiased selection:bg-orange-500 selection:text-white">
       {/* ── Menu điều hướng phía trên (Header & Navbar) ── */}
       <Navbar 
-        activePage={activePage} 
-        setActivePage={setActivePage} 
         cart={cart}
-        currentOrderCount={orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length}
+        currentOrderCount={currentOrderCount}
         currentUser={currentUser}
         onLogout={handleLogout}
       />
@@ -66,99 +63,58 @@ export default function App() {
       <div className="flex-1">
         <AnimatePresence mode="wait">
           <motion.div
-            key={activePage}
+            key={location.pathname}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
-            {activePage === 'home' && (
-              <HomePage 
-                restaurants={restaurants} 
-                setSelectedRestaurantId={setSelectedRestaurantId} 
-                setActivePage={setActivePage}
-              />
-            )}
-
-            {activePage === 'restaurant' && (
-              <RestaurantDetailPage
-                restaurant={selectedRestaurant}
-                onBack={() => {
-                  setSelectedRestaurantId(null);
-                  setActivePage('home');
-                }}
-                cart={cart}
-                addToCart={addToCart}
-                updateCartItemQty={updateCartItemQty}
-                onGoToCart={() => setActivePage('cart')}
-              />
-            )}
-
-            {activePage === 'cart' && (
-              <CartPage
-                cart={cart}
-                restaurantId={selectedRestaurantId}
-                restaurantName={cartMeta.name}
-                restaurantAddress={cartMeta.address}
-                deliveryFee={cartMeta.deliveryFee}
-                minOrderValue={cartMeta.minOrderValue}
-                updateCartItemQty={updateCartItemQty}
-                removeFromCart={removeFromCart}
-                onPlaceOrder={onPlaceOrder}
-                setActivePage={setActivePage}
-                clearCart={clearCart}
-              />
-            )}
-
-            {activePage === 'orders' && (
-              <OrderHistoryPage
-                orders={orders}
-                onSimulateStatus={onUpdateOrderStatus}
-                setActivePage={setActivePage}
-              />
-            )}
-
-            {activePage === 'partner' && (
-              <PartnerDashboard
-                restaurants={restaurants}
-                orders={orders}
-                onAddMenuItem={onAddMenuItem}
-                onRemoveMenuItem={onRemoveMenuItem}
-                onUpdateOrderStatus={onUpdateOrderStatus}
-                onToggleStoreState={onToggleStoreState}
-              />
-            )}
-
-            {activePage === 'login' && (
-              <LoginPage
-                onLoginSuccess={handleLoginSuccess}
-                setActivePage={(p) => {
-                  if (p === 'partner' && currentUser?.role === UserRole.USER) {
-                    setActivePage('home');
-                  } else {
-                    setActivePage(p);
-                  }
-                }}
-              />
-            )}
-
-            {activePage === 'register' && (
-              <RegisterPage
-                setActivePage={(p) => {
-                  if (p === 'partner' && currentUser?.role === UserRole.USER) {
-                    setActivePage('home');
-                  } else {
-                    setActivePage(p);
-                  }
-                }}
-              />
-            )}
+            <Outlet context={{
+              restaurants,
+              setRestaurants,
+              orders,
+              setOrders,
+              currentUser,
+              handleLoginSuccess,
+              handleLogout,
+              cart,
+              addToCart,
+              updateCartItemQty,
+              removeFromCart,
+              clearCart,
+              cartMeta,
+              onPlaceOrder,
+              onUpdateOrderStatus,
+              onAddMenuItem,
+              onToggleStoreState,
+              onRemoveMenuItem,
+            }} />
           </motion.div>
         </AnimatePresence>
       </div>
 
       {/* ── Component chân trang (Footer tách biệt) ── */}
-      <Footer setActivePage={setActivePage} />
+      <Footer />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/restaurant/:id" element={<RestaurantDetailPage />} />
+          <Route path="/cart" element={<CartPage />} />
+          <Route path="/orders" element={<OrderHistoryPage />} />
+          <Route path="/partner" element={<PartnerDashboard />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          {/* Fallback route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }

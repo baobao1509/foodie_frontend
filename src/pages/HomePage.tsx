@@ -1,20 +1,50 @@
-import React, { useState } from 'react';
-import { Restaurant } from '../types';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { AppContextType } from '../types';
 import { CATEGORIES_LIST, PROMO_CODES } from '../data';
-import { Search } from 'lucide-react';
+import { Search, Loader } from 'lucide-react';
+import { getRestaurants as apiGetRestaurants } from '../api';
 import PromoCard from '../components/home/PromoCard';
 import RestaurantCard from '../components/home/RestaurantCard';
 
-interface HomePageProps {
-  restaurants: Restaurant[];
-  setSelectedRestaurantId: (id: string | null) => void;
-  setActivePage: (page: 'home' | 'restaurant' | 'cart' | 'orders' | 'partner') => void;
-}
+export default function HomePage() {
+  const { restaurants, setRestaurants } = useOutletContext<AppContextType>();
+  const navigate = useNavigate();
 
-export default function HomePage({ restaurants, setSelectedRestaurantId, setActivePage }: HomePageProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('rating');
+
+  // Fetch restaurants directly in Homepage
+  useEffect(() => {
+    let active = true;
+    const fetchRestaurantsDirectly = async () => {
+      setIsLoading(true);
+      setFetchError('');
+      try {
+        const liveList = await apiGetRestaurants();
+        if (active && liveList && liveList.length > 0) {
+          setRestaurants(liveList);
+        }
+      } catch (err) {
+        console.warn('Could not load live restaurants directly from HomePage, using loaded/fallback data:', err);
+        if (active) {
+          setFetchError('Kết nối tới máy chủ thất bại, đang hiển thị danh sách dự phòng.');
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    };
+    fetchRestaurantsDirectly();
+
+    return () => {
+      active = false;
+    };
+  }, [setRestaurants]);
 
   // Filter restaurants by search query & category
   const filteredRestaurants = restaurants.filter((restaurant) => {
@@ -42,8 +72,7 @@ export default function HomePage({ restaurants, setSelectedRestaurantId, setActi
   });
 
   const selectRestaurant = (id: string) => {
-    setSelectedRestaurantId(id);
-    setActivePage('restaurant');
+    navigate(`/restaurant/${id}`);
   };
 
   return (
@@ -132,9 +161,14 @@ export default function HomePage({ restaurants, setSelectedRestaurantId, setActi
         {/* Section Header Controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Đối tác nhà hàng nổi bật</h2>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+              <span>Đối tác nhà hàng nổi bật</span>
+              {isLoading && <Loader className="w-5 h-5 animate-spin text-orange-500" />}
+            </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Phát hiện {sortedRestaurants.length} địa điểm ẩm thực chất lượng hàng đầu
+              {isLoading 
+                ? 'Đang đồng bộ thực đơn & nhà hàng mới nhất từ cơ sở dữ liệu...' 
+                : `Phát hiện ${sortedRestaurants.length} địa điểm ẩm thực chất lượng hàng đầu`}
             </p>
           </div>
 
