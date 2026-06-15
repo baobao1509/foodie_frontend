@@ -38,7 +38,9 @@ export default function LoginPage() {
         setTimeout(() => {
           onLoginSuccess(userData);
           // Redirect smart based on role
-          if (userData.role === UserRole.PARTNER || userData.role === UserRole.ADMIN) {
+          if (userData.role === UserRole.ADMIN) {
+            navigate('/admin');
+          } else if (userData.role === UserRole.PARTNER) {
             navigate('/partner');
           } else {
             navigate('/');

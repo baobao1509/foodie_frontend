@@ -27,8 +27,19 @@ export interface Restaurant {
   categories: string[];
   estimatedTime: string;
   menu: MenuItem[];
+  description?: string;
+  phone?: string;
+  email?: string;
+  fullAddress?: string;
+  ward?: string;
+  latitude?: number;
+  longitude?: number;
+  status?: string;
+  createdAt?: string;
+  ownerId?: string;
+  ownerName?: string;
+  ownerPhone?: string;
 }
-
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;
@@ -64,9 +75,10 @@ export interface Order {
 }
 
 export enum UserRole {
-  USER = 'USER',
+  CUSTOMER = 'CUSTOMER',
   PARTNER = 'PARTNER',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  RESTAURANT='RESTAURANT'
 }
 
 export interface UserSummaryDTO {

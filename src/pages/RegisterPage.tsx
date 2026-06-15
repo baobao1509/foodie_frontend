@@ -12,7 +12,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.USER);
+  const [role, setRole] = useState<UserRole>(UserRole.CUSTOMER);
 
   // Status and interaction states
   const [isLoading, setIsLoading] = useState(false);
@@ -48,12 +48,17 @@ export default function RegisterPage() {
 
       await apiRegister(payload);
       
-      setSuccessMessage('Đăng ký tài khoản thành công! Đang chuyển hướng về trang đăng nhập...');
-      
-      // Auto transition to login page
-      setTimeout(() => {
-        navigate('/login');
-      }, 1800);
+      if (role === UserRole.PARTNER) {
+        setSuccessMessage('Đăng ký tài khoản Đối tác thành công! Đang chuyển hướng sang trang thiết lập thông tin Nhà hàng...');
+        setTimeout(() => {
+          navigate('/register-restaurant', { state: { email: email.trim(), fullName: fullName.trim() } });
+        }, 1800);
+      } else {
+        setSuccessMessage('Đăng ký tài khoản thành công! Đang chuyển hướng về trang đăng nhập...');
+        setTimeout(() => {
+          navigate('/login');
+        }, 1800);
+      }
     } catch (err: any) {
       console.error(err);
       const errResponseMsg = err.response?.data?.message;
@@ -147,7 +152,7 @@ export default function RegisterPage() {
                   onChange={(e) => setRole(e.target.value as UserRole)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-xs font-bold text-gray-800 outline-hidden focus:ring-2 focus:ring-orange-500/10 appearance-none"
                 >
-                  <option value={UserRole.USER}>Khách hàng mua sắm (USER)</option>
+                  <option value={UserRole.CUSTOMER}>Khách hàng mua sắm (CUSTOMER)</option>
                   <option value={UserRole.PARTNER}>Nhà hàng Đối tác (PARTNER)</option>
                   <option value={UserRole.ADMIN}>Quản trị viên (ADMIN)</option>
                 </select>

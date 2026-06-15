@@ -14,7 +14,7 @@ export {
 export { login, register, logout } from './services/authService';
 
 // Re-export Restaurant operations
-export { getRestaurants } from './services/restaurantService';
+export { getRestaurants, createRestaurant } from './services/restaurantService';
 
 // Re-export Order operations
 export { getOrders } from './services/orderService';

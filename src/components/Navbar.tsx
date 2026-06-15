@@ -91,24 +91,38 @@ export default function Navbar({ cart, currentOrderCount, currentUser, onLogout 
 
         <button
           onClick={() => {
-            if (currentUser && currentUser.role === UserRole.USER) {
-              alert('Chỉ tài khoản đối tác (PARTNER) hoặc quản trị (ADMIN) mới có quyền truy cập Kênh Nhà Hàng. Vui lòng chuyển sang tài khoản đối tác bằng việc đăng nhập lại!');
+            if (currentUser && currentUser.role === UserRole.CUSTOMER) {
+              navigate('/register-restaurant');
               return;
             }
             if (!currentUser) {
               navigate('/login');
               return;
             }
+            if (currentUser.role === UserRole.ADMIN) {
+              navigate('/admin');
+              return;
+            }
             navigate('/partner');
           }}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-            isPartnerActive
-              ? 'bg-emerald-600 text-white shadow-xs'
+            isPartnerActive || pathname === '/register-restaurant' || pathname === '/admin'
+              ? 'bg-orange-600 text-white shadow-xs'
+              : currentUser && currentUser.role === UserRole.CUSTOMER
+              ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200/50'
+              : currentUser && currentUser.role === UserRole.ADMIN
+              ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200/50 shadow-xs'
               : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
           }`}
         >
           <ChefHat className="w-4 h-4" />
-          <span className="hidden md:inline">Kênh Nhà Hàng</span>
+          <span className="hidden md:inline">
+            {currentUser && currentUser.role === UserRole.CUSTOMER 
+              ? 'Đăng ký bán hàng' 
+              : currentUser && currentUser.role === UserRole.ADMIN 
+              ? 'Kênh Quản trị' 
+              : 'Kênh Nhà Hàng'}
+          </span>
         </button>
 
         <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
@@ -153,7 +167,46 @@ export default function Navbar({ cart, currentOrderCount, currentUser, onLogout 
                   </div>
                 </div>
 
-                <div className="p-1">
+                <div className="p-1 space-y-1">
+                  {currentUser.role === UserRole.CUSTOMER && (
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        navigate('/register-restaurant');
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50 rounded-xl transition-all cursor-pointer text-left"
+                    >
+                      <ChefHat className="w-4 h-4 shrink-0 text-orange-500" />
+                      <span>Đăng ký Mở Nhà Hàng 🚀</span>
+                    </button>
+                  )}
+
+                  {currentUser.role === UserRole.ADMIN && (
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        navigate('/admin');
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-650 hover:bg-red-50 rounded-xl transition-all cursor-pointer text-left"
+                    >
+                      <ChefHat className="w-4 h-4 shrink-0 text-red-500" />
+                      <span>Kênh Quản trị Admin ⚙️</span>
+                    </button>
+                  )}
+
+                  {currentUser.role === UserRole.PARTNER && (
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        navigate('/partner');
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-emerald-650 hover:bg-emerald-50 rounded-xl transition-all cursor-pointer text-left"
+                    >
+                      <ChefHat className="w-4 h-4 shrink-0 text-emerald-500" />
+                      <span>Kênh Nhà Hàng 🍳</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       setShowProfileDropdown(false);

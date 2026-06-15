@@ -35,7 +35,7 @@ export const mapBackendRestaurant = (raw: any) => {
 export const getRestaurants = async (): Promise<any[]> => {
   try {
     // Gọi tới endpoint config qua reverse proxy / Nginx
-    const res = await api.get('/restaurants');
+    const res = await api.get('restaurants');
     const responseData = res.data;
 
     let rawList: any[] = [];
@@ -52,7 +52,7 @@ export const getRestaurants = async (): Promise<any[]> => {
   } catch (err) {
     console.warn('[RestaurantService] Failed with /api/ve/restaurant, trying fallback endpoint /restaurant:', err);
     try {
-      const res = await api.get('/restaurants');
+      const res = await api.get('/restaurant');
       const responseData = res.data;
       
       let rawList: any[] = [];
@@ -67,6 +67,23 @@ export const getRestaurants = async (): Promise<any[]> => {
       return rawList.map(mapBackendRestaurant);
     } catch (err2) {
       console.error('[RestaurantService] Failed to load restaurants from backend API entirely:', err2);
+      throw err2;
+    }
+  }
+};
+
+export const createRestaurant = async (payload: any): Promise<any> => {
+  try {
+    // Thử gọi qua URL config của Nginx reverse-proxy trước
+    const res = await api.post('/restaurants', payload);
+    return res.data;
+  } catch (err) {
+    console.warn('[RestaurantService] Failed with POST /api/ve/restaurant, trying fallback /restaurant:', err);
+    try {
+      const res = await api.post('/restaurant', payload);
+      return res.data;
+    } catch (err2) {
+      console.error('[RestaurantService] Failed to create restaurant on both endpoints:', err2);
       throw err2;
     }
   }

@@ -12,6 +12,9 @@ import OrderHistoryPage from './pages/OrderHistoryPage';
 import PartnerDashboard from './pages/PartnerDashboard';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import RegisterRestaurantPage from './pages/RegisterRestaurantPage';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminRestaurantsPage from './pages/AdminRestaurantPage';
 
 // Custom Hooks imports for clean state separation
 import { useAuth } from './hooks/useAuth';
@@ -111,6 +114,9 @@ export default function App() {
           <Route path="/partner" element={<PartnerDashboard />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register-restaurant" element={<RegisterRestaurantPage />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/restaurants" element={<AdminRestaurantsPage />} />
           {/* Fallback route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
