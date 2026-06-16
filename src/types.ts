@@ -39,7 +39,10 @@ export interface Restaurant {
   ownerId?: string;
   ownerName?: string;
   ownerPhone?: string;
+  payosAccountId?: string;
+  qrCodeUrl?: string;
 }
+
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;
@@ -77,8 +80,7 @@ export interface Order {
 export enum UserRole {
   CUSTOMER = 'CUSTOMER',
   PARTNER = 'PARTNER',
-  ADMIN = 'ADMIN',
-  RESTAURANT='RESTAURANT'
+  ADMIN = 'ADMIN'
 }
 
 export interface UserSummaryDTO {

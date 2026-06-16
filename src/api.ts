@@ -14,7 +14,15 @@ export {
 export { login, register, logout } from './services/authService';
 
 // Re-export Restaurant operations
-export { getRestaurants, createRestaurant } from './services/restaurantService';
+export {
+  getRestaurants,
+  createRestaurant,
+  updateRestaurantStatusInBackend,
+  deleteRestaurantInBackend
+} from './services/restaurantService';
 
+export{
+  getRestaurantsAdminPaginated
+}from'./services/adminService'
 // Re-export Order operations
 export { getOrders } from './services/orderService';

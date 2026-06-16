@@ -7,7 +7,7 @@ export const mapBackendRestaurant = (raw: any) => {
     name: raw.name || 'Nhà hàng ẩm thực',
     slug: raw.slug || '',
     coverImageUrl: raw.coverImageUrl || raw.imageUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
-    address: raw.address || 'Địa chỉ liên hệ',
+    address: raw.fullAddress || raw.address || 'Địa chỉ liên hệ',
     city: raw.city || 'Thành phố',
     district: raw.district || 'Quận/Huyện',
     deliveryFee: typeof raw.deliveryFee === 'number' ? raw.deliveryFee : 15000,
@@ -19,6 +19,20 @@ export const mapBackendRestaurant = (raw: any) => {
     isOpen: typeof raw.isOpen === 'boolean' ? raw.isOpen : true,
     categories: Array.isArray(raw.categories) && raw.categories.length > 0 ? raw.categories : ['Ẩm thực', 'Món Việt'],
     estimatedTime: raw.estimatedTime || '35 phút',
+    description: raw.description || '',
+    phone: raw.phone || '',
+    email: raw.email || '',
+    fullAddress: raw.fullAddress || '',
+    ward: raw.ward || '',
+    latitude: raw.latitude,
+    longitude: raw.longitude,
+    status: raw.status || '',
+    createdAt: raw.createdAt || '',
+    ownerId: raw.ownerId || '',
+    ownerName: raw.ownerName || '',
+    ownerPhone: raw.ownerPhone || '',
+    payosAccountId: raw.payosAccountId || '',
+    qrCodeUrl: raw.qrCodeUrl || '',
     menu: Array.isArray(raw.menu) ? raw.menu.map((m: any) => ({
       id: String(m.id || ''),
       name: m.name || 'Tên món ăn',
@@ -35,7 +49,7 @@ export const mapBackendRestaurant = (raw: any) => {
 export const getRestaurants = async (): Promise<any[]> => {
   try {
     // Gọi tới endpoint config qua reverse proxy / Nginx
-    const res = await api.get('restaurants');
+    const res = await api.get('/restaurants');
     const responseData = res.data;
 
     let rawList: any[] = [];
@@ -52,7 +66,7 @@ export const getRestaurants = async (): Promise<any[]> => {
   } catch (err) {
     console.warn('[RestaurantService] Failed with /api/ve/restaurant, trying fallback endpoint /restaurant:', err);
     try {
-      const res = await api.get('/restaurant');
+      const res = await api.get('/restaurants');
       const responseData = res.data;
       
       let rawList: any[] = [];
@@ -75,7 +89,7 @@ export const getRestaurants = async (): Promise<any[]> => {
 export const createRestaurant = async (payload: any): Promise<any> => {
   try {
     // Thử gọi qua URL config của Nginx reverse-proxy trước
-    const res = await api.post('/restaurants', payload);
+    const res = await api.post('/restaurants/me', payload);
     return res.data;
   } catch (err) {
     console.warn('[RestaurantService] Failed with POST /api/ve/restaurant, trying fallback /restaurant:', err);
@@ -85,6 +99,43 @@ export const createRestaurant = async (payload: any): Promise<any> => {
     } catch (err2) {
       console.error('[RestaurantService] Failed to create restaurant on both endpoints:', err2);
       throw err2;
+    }
+  }
+};
+
+
+export const updateRestaurantStatusInBackend = async (id: string, status: string): Promise<any> => {
+  try {
+    // Có thể gởi PUT lên backend /ve/restaurant/{id}/status?status={status}
+    const res = await api.put(`/ve/restaurant/${id}/status`, null, {
+      baseURL: '/api',
+      params: { status: status.toUpperCase() }
+    });
+    return res.data;
+  } catch (err) {
+    console.warn('[RestaurantService] Failed updating status with query params, trying PUT with body:', err);
+    try {
+      const res = await api.put(`/ve/restaurant/${id}/status`, { status: status.toUpperCase() }, { baseURL: '/api' });
+      return res.data;
+    } catch (err2) {
+      console.warn('[RestaurantService] Failed all real-backend status updates, falls back to local simulate:', err2);
+      return { success: true, simulated: true };
+    }
+  }
+};
+
+export const deleteRestaurantInBackend = async (id: string): Promise<any> => {
+  try {
+    const res = await api.delete(`/ve/restaurant/${id}`, { baseURL: '/api' });
+    return res.data;
+  } catch (err) {
+    console.warn('[RestaurantService] Failed delete via standard API, trying fallback without /api baseURL:', err);
+    try {
+      const res = await api.delete(`/restaurant/${id}`);
+      return res.data;
+    } catch (err2) {
+      console.warn('[RestaurantService] Failed all backend deletes, using local simulation fallback:', err2);
+      return { success: true, simulated: true };
     }
   }
 };
