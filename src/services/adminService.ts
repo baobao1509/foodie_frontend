@@ -1,48 +1,11 @@
 import { api } from './apiClient';
 import { mapBackendRestaurant } from './restaurantService';
+import { UserSummaryDTO } from '../types';
 
 export { mapBackendRestaurant };
 
-export const getAdminRestaurants = async (): Promise<any[]> => {
-  try {
-    // Gọi tới endpoint config qua reverse proxy / Nginx
-    const res = await api.get('admin/restaurant');
-    const responseData = res.data;
-
-    let rawList: any[] = [];
-    // Hỗ trợ cả Page JPA và Array thuần
-    if (responseData && Array.isArray(responseData.content)) {
-      rawList = responseData.content;
-    } else if (Array.isArray(responseData)) {
-      rawList = responseData;
-    } else if (responseData && typeof responseData === 'object') {
-      rawList = responseData.data || [];
-    }
-
-    return rawList.map(mapBackendRestaurant);
-  } catch (err) {
-    console.warn('[RestaurantService] Failed with /api/ve/restaurant, trying fallback endpoint /restaurant:', err);
-    try {
-      const res = await api.get('/restaurant');
-      const responseData = res.data;
-      
-      let rawList: any[] = [];
-      if (responseData && Array.isArray(responseData.content)) {
-        rawList = responseData.content;
-      } else if (Array.isArray(responseData)) {
-        rawList = responseData;
-      } else if (responseData && typeof responseData === 'object') {
-        rawList = responseData.data || [];
-      }
-      
-      return rawList.map(mapBackendRestaurant);
-    } catch (err2) {
-      console.error('[RestaurantService] Failed to load restaurants from backend API entirely:', err2);
-      throw err2;
-    }
-  }
-};
 export const getRestaurantsAdminPaginated = async (
+  status: string = 'ALL',
   page: number = 0,
   size: number = 10
 ): Promise<{
@@ -53,12 +16,15 @@ export const getRestaurantsAdminPaginated = async (
   size: number;
 }> => {
   try {
-    const res = await api.get('/admin/restaurants', {
-      params: {
-        page,
-        size
-      }
-    });
+    const params: any = {
+      page,
+      size
+    };
+    if (status && status !== 'ALL') {
+      params.status = status.toUpperCase();
+    }
+
+    const res = await api.get('/admin/restaurants', { params });
     const responseData = res.data;
 
     let content: any[] = [];
@@ -89,35 +55,67 @@ export const getRestaurantsAdminPaginated = async (
       size,
     };
   } catch (err) {
-    console.warn('[RestaurantService] Failed paginated fetch from Admin controller, trying client fallback:', err);
-    // Fallback: Lấy toàn bộ danh sách ở client và tự phân trang cục bộ
-    try {
-      const all = await getAdminRestaurants();
-      const totalElements = all.length;
-      const totalPages = Math.ceil(totalElements / size) || 1;
-      const startIdx = page * size;
-      const content = all.slice(startIdx, startIdx + size);
-      
-      return {
-        content,
-        totalPages,
-        totalElements,
-        number: page,
-        size,
-      };
-    } catch (fallbackErr) {
-      console.error('[RestaurantService] All fetching systems failed:', fallbackErr);
-      return {
-        content: [],
-        totalPages: 1,
-        totalElements: 0,
-        number: page,
-        size
-      };
-    }
+    console.error('[RestaurantService] Failed paginated fetch from Admin controller:', err);
+    return {
+      content: [],
+      totalPages: 1,
+      totalElements: 0,
+      number: page,
+      size
+    };
   }
 };
 
+export const approveRestaurantInBackend = async (
+  restaurantId: string,
+  currentUser: UserSummaryDTO
+): Promise<any> => {
+  // Gửi đúng 1 phát duy nhất tới endpoint chính xác qua POST
+  const params = { restaurantId };
+  const body = {
+    id: currentUser.id,
+    fullName: currentUser.fullName,
+    avatarUrl: currentUser.avatarUrl,
+    role: currentUser.role
+  };
+
+  const res = await api.post('/admin/restaurants/approve', body, { params });
+  return res.data;
+};
+
+export const suspendRestaurantInBackend = async (
+  restaurantId: string,
+  currentUser: UserSummaryDTO
+): Promise<any> => {
+  // Gửi đúng 1 phát duy nhất tới /admin/restaurants/suspended qua POST
+  const params = { restaurantId };
+  const body = {
+    id: currentUser.id,
+    fullName: currentUser.fullName,
+    avatarUrl: currentUser.avatarUrl,
+    role: currentUser.role
+  };
+
+  const res = await api.post('/admin/restaurants/suspended', body, { params });
+  return res.data;
+};
+
+
+export const unblockRestaurantInBackend = async (
+  restaurantId: string,
+  currentUser: UserSummaryDTO
+): Promise<any> => {
+  const params = { restaurantId };
+  const body = {
+    id: currentUser.id,
+    fullName: currentUser.fullName,
+    avatarUrl: currentUser.avatarUrl,
+    role: currentUser.role
+  };
+
+  const res = await api.post('/admin/restaurants/unblock', body, { params });
+  return res.data;
+};
 
 export const createRestaurant = async (payload: any): Promise<any> => {
   try {
@@ -125,7 +123,7 @@ export const createRestaurant = async (payload: any): Promise<any> => {
     const res = await api.post('/restaurants', payload);
     return res.data;
   } catch (err) {
-    console.warn('[RestaurantService] Failed with POST /api/ve/restaurant, trying fallback /restaurant:', err);
+    console.warn('[RestaurantService] Failed with POST /restaurants, trying fallback /restaurant:', err);
     try {
       const res = await api.post('/restaurant', payload);
       return res.data;

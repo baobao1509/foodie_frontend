@@ -64,7 +64,7 @@ export const getRestaurants = async (): Promise<any[]> => {
 
     return rawList.map(mapBackendRestaurant);
   } catch (err) {
-    console.warn('[RestaurantService] Failed with /api/ve/restaurant, trying fallback endpoint /restaurant:', err);
+    console.warn('[RestaurantService] Failed with /restaurants, trying fallback endpoint /restaurant:', err);
     try {
       const res = await api.get('/restaurants');
       const responseData = res.data;
@@ -92,7 +92,7 @@ export const createRestaurant = async (payload: any): Promise<any> => {
     const res = await api.post('/restaurants/me', payload);
     return res.data;
   } catch (err) {
-    console.warn('[RestaurantService] Failed with POST /api/ve/restaurant, trying fallback /restaurant:', err);
+    console.warn('[RestaurantService] Failed with POST /restaurants/me, trying fallback /restaurant:', err);
     try {
       const res = await api.post('/restaurant', payload);
       return res.data;
@@ -106,16 +106,15 @@ export const createRestaurant = async (payload: any): Promise<any> => {
 
 export const updateRestaurantStatusInBackend = async (id: string, status: string): Promise<any> => {
   try {
-    // Có thể gởi PUT lên backend /ve/restaurant/{id}/status?status={status}
-    const res = await api.put(`/ve/restaurant/${id}/status`, null, {
-      baseURL: '/api',
+    // Gởi PUT lên /api/v1/admin/restaurants/{id}/status?status={status}
+    const res = await api.put(`/admin/restaurants/${id}/status`, null, {
       params: { status: status.toUpperCase() }
     });
     return res.data;
   } catch (err) {
     console.warn('[RestaurantService] Failed updating status with query params, trying PUT with body:', err);
     try {
-      const res = await api.put(`/ve/restaurant/${id}/status`, { status: status.toUpperCase() }, { baseURL: '/api' });
+      const res = await api.put(`/admin/restaurants/${id}/status`, { status: status.toUpperCase() });
       return res.data;
     } catch (err2) {
       console.warn('[RestaurantService] Failed all real-backend status updates, falls back to local simulate:', err2);
@@ -126,12 +125,12 @@ export const updateRestaurantStatusInBackend = async (id: string, status: string
 
 export const deleteRestaurantInBackend = async (id: string): Promise<any> => {
   try {
-    const res = await api.delete(`/ve/restaurant/${id}`, { baseURL: '/api' });
+    const res = await api.delete(`/admin/restaurants/${id}`);
     return res.data;
   } catch (err) {
-    console.warn('[RestaurantService] Failed delete via standard API, trying fallback without /api baseURL:', err);
+    console.warn('[RestaurantService] Failed delete via standard admin API, trying fallback with /restaurants:', err);
     try {
-      const res = await api.delete(`/restaurant/${id}`);
+      const res = await api.delete(`/restaurants/${id}`);
       return res.data;
     } catch (err2) {
       console.warn('[RestaurantService] Failed all backend deletes, using local simulation fallback:', err2);

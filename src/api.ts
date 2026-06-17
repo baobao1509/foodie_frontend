@@ -21,8 +21,12 @@ export {
   deleteRestaurantInBackend
 } from './services/restaurantService';
 
-export{
-  getRestaurantsAdminPaginated
-}from'./services/adminService'
+export {
+  getRestaurantsAdminPaginated,
+  approveRestaurantInBackend,
+  suspendRestaurantInBackend,
+  unblockRestaurantInBackend
+} from './services/adminService';
+
 // Re-export Order operations
 export { getOrders } from './services/orderService';

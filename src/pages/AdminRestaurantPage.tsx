@@ -5,7 +5,10 @@ import {
   getRestaurantsAdminPaginated,
   updateRestaurantStatusInBackend,
   deleteRestaurantInBackend,
-  createRestaurant
+  createRestaurant,
+  approveRestaurantInBackend,
+  suspendRestaurantInBackend,
+  unblockRestaurantInBackend
 } from '../api';
 import {
   ShieldAlert, Check, XCircle, AlertTriangle, AlertCircle, Clock,
@@ -66,7 +69,7 @@ export default function AdminRestaurantsPage() {
   const [fClosingTime, setFClosingTime] = useState('22:00');
   const [fMinOrderValue, setFMinOrderValue] = useState(0);
   const [fDeliveryFee, setFDeliveryFee] = useState(15000);
-  const [fStatus, setFStatus] = useState('PENDING_APPROVAL'); // e.g. ACTIVE, PENDING_APPROVAL, BLOCKED
+  const [fStatus, setFStatus] = useState('PENDING'); // e.g. ACTIVE, PENDING, SUSPENDED, BANNED
   const [fOwnerName, setFOwnerName] = useState('');
   const [fOwnerPhone, setFOwnerPhone] = useState('');
   const [fCategories, setFCategories] = useState('Cơm, Phở, Đặc sản');
@@ -96,7 +99,7 @@ export default function AdminRestaurantsPage() {
     setIsLoading(true);
     setFetchError('');
     try {
-      const pageResult = await getRestaurantsAdminPaginated(currentPage, pageSize);
+      const pageResult = await getRestaurantsAdminPaginated(selectedStatusFilter, currentPage, pageSize);
       setPageRestaurants(pageResult.content);
       setTotalPages(pageResult.totalPages);
       setTotalElements(pageResult.totalElements);
@@ -170,15 +173,24 @@ export default function AdminRestaurantsPage() {
   }
 
   // Quick Action: Status updates (Approve / Reject / Block) directly updating the backend and reloading
-  const handleUpdateStatus = async (id: string, name: string, nextStatus: string) => {
+  const handleUpdateStatus = async (id: string, name: string, nextStatus: string, action?: 'unblock') => {
     setIsLoading(true);
     try {
-      await updateRestaurantStatusInBackend(id, nextStatus);
+      if (action === 'unblock') {
+        await unblockRestaurantInBackend(id, currentUser);
+      } else if (nextStatus === 'ACTIVE') {
+        await approveRestaurantInBackend(id, currentUser);
+      } else if (nextStatus === 'SUSPENDED' || nextStatus === 'BLOCKED') {
+        await suspendRestaurantInBackend(id, currentUser);
+      } else {
+        await updateRestaurantStatusInBackend(id, nextStatus);
+      }
       
       let label = 'cập nhật trạng thái';
       if (nextStatus === 'ACTIVE') label = 'Phê duyệt cấp phép hoạt động';
-      if (nextStatus === 'BLOCKED') label = 'Đình chỉ dừng hoạt động';
-      if (nextStatus === 'PENDING_APPROVAL') label = 'Chuyển về trạng thái Chờ duyệt';
+      if (nextStatus === 'SUSPENDED' || nextStatus === 'BLOCKED') label = 'Đình chỉ tạm thời hoạt động';
+      if (nextStatus === 'BANNED') label = 'Cấm vĩnh viễn hoạt động';
+      if (nextStatus === 'PENDING' || nextStatus === 'PENDING_APPROVAL') label = 'Chuyển về trạng thái Chờ duyệt';
 
       setAlertMsg({ 
         type: 'success', 
@@ -211,7 +223,7 @@ export default function AdminRestaurantsPage() {
     setFMinOrderValue(0);
     setFOpeningTime('08:00');
     setFClosingTime('22:00');
-    setFStatus('PENDING_APPROVAL');
+    setFStatus('PENDING');
     setFOwnerName('');
     setFOwnerPhone('');
     setFCategories('Món ăn Việt, Cơm Phở, Cà phê, Nước ngọt');
@@ -324,7 +336,7 @@ export default function AdminRestaurantsPage() {
 
         // Gởi bản cập nhật lên server, nếu không hỗ trợ thì update context local như trước
         try {
-          // Thử call PUT /ve/restaurant/{id}
+          // Thử call PUT /admin/restaurants/{id}
           await createRestaurant(updatedPayload); // create Restaurant acts as a save/upsert in some backend APIs
         } catch {
           // fallback update local
@@ -395,7 +407,7 @@ export default function AdminRestaurantsPage() {
     }
   };
 
-  // Searching + multi filters: city and search keywords applied client-side to current page
+  // Searching + multi filters: city and status applied client-side to current page list
   const filteredRestaurants = pageRestaurants.filter((r) => {
     const rawSearch = searchTerm.toLowerCase();
     
@@ -409,7 +421,14 @@ export default function AdminRestaurantsPage() {
 
     const matchesCity = selectedCity === 'ALL' || (r.city && r.city.toLowerCase().includes(selectedCity.toLowerCase()));
     
-    return matchesSearch && matchesCity;
+    const matchesStatus = selectedStatusFilter === 'ALL' || 
+      (r.status || 'ACTIVE').toUpperCase() === selectedStatusFilter.toUpperCase() ||
+      (selectedStatusFilter === 'PENDING' && (r.status || '').toUpperCase() === 'PENDING_APPROVAL') ||
+      (selectedStatusFilter === 'PENDING_APPROVAL' && (r.status || '').toUpperCase() === 'PENDING') ||
+      ((selectedStatusFilter === 'SUSPENDED' || selectedStatusFilter === 'BLOCKED') && 
+       ((r.status || '').toUpperCase() === 'SUSPENDED' || (r.status || '').toUpperCase() === 'BLOCKED' || (r.status || '').toUpperCase() === 'SUSPENDED'));
+
+    return matchesSearch && matchesCity && matchesStatus;
   });
 
   const totalCount = totalElements;
@@ -672,7 +691,7 @@ export default function AdminRestaurantsPage() {
                     { key: 'ALL', label: 'Tất cả' },
                     { key: 'ACTIVE', label: 'Hoạt động (ACTIVE)' },
                     { key: 'PENDING', label: 'Chờ duyệt (PENDING)' },
-                    { key: 'BLOCKED', label: 'Đang khóa (BLOCKED)' }
+                    { key: 'SUSPENDED', label: 'Tạm khóa (SUSPENDED)' }
                   ].map((stOpt) => (
                     <button
                       key={stOpt.key}
@@ -722,25 +741,25 @@ export default function AdminRestaurantsPage() {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {filteredRestaurants.map((res: Restaurant) => {
-                    const currentStatus = res.status;
-                    console.log(currentStatus);
+                    const currentStatus = res.status || 'ACTIVE';
+                    
                     // Render status badges with clean design
                     let statusBadge = (
                       <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
                         HOẠT ĐỘNG (ACTIVE)
                       </span>
                     );
-                    if(currentStatus==='ACTIVE'){
-                      statusBadge=(
-                                              <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
-                        HOẠT ĐỘNG (ACTIVE)
-                      </span>
-                      )
-                    }
-                    if (currentStatus === 'BLOCKED') {
+
+                    if (currentStatus === 'BLOCKED' || currentStatus === 'SUSPENDED') {
                       statusBadge = (
                         <span className="bg-red-50 text-red-700 border border-red-150 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
-                          ĐÃ KHÓA (BLOCKED)
+                          ĐÃ KHÓA (SUSPENDED)
+                        </span>
+                      );
+                    } else if (currentStatus === 'BANNED') {
+                      statusBadge = (
+                        <span className="bg-red-100 text-red-900 border border-red-205 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                          BỊ CẤM (BANNED)
                         </span>
                       );
                     } else if (currentStatus === 'PENDING_APPROVAL' || currentStatus === 'PENDING') {
@@ -797,7 +816,7 @@ export default function AdminRestaurantsPage() {
                                   <span>Duyệt</span>
                                 </button>
                                 <button
-                                  onClick={() => handleUpdateStatus(res.id, res.name, 'BLOCKED')}
+                                  onClick={() => handleUpdateStatus(res.id, res.name, 'SUSPENDED')}
                                   className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all border border-red-200/50"
                                 >
                                   <XCircle className="w-3.5 h-3.5" />
@@ -808,16 +827,16 @@ export default function AdminRestaurantsPage() {
 
                             {currentStatus === 'ACTIVE' && (
                               <button
-                                onClick={() => handleUpdateStatus(res.id, res.name, 'BLOCKED')}
+                                onClick={() => handleUpdateStatus(res.id, res.name, 'SUSPENDED')}
                                 className="px-3 py-1.5 bg-gray-150 hover:bg-red-50 hover:text-red-700 border border-gray-250 text-gray-700 font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer transition-all"
                               >
                                 Tạm dừng / Khóa
                               </button>
                             )}
 
-                            {currentStatus === 'BLOCKED' && (
+                            {(currentStatus === 'BLOCKED' || currentStatus === 'SUSPENDED' || currentStatus === 'BANNED') && (
                               <button
-                                onClick={() => handleUpdateStatus(res.id, res.name, 'ACTIVE')}
+                                onClick={() => handleUpdateStatus(res.id, res.name, 'ACTIVE', 'unblock')}
                                 className="px-3 py-1.5 bg-amber-50 hover:bg-emerald-50 hover:text-emerald-700 border border-amber-200 text-amber-800 font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer transition-all"
                               >
                                 Mở khóa hoạt động
@@ -1352,8 +1371,9 @@ export default function AdminRestaurantsPage() {
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 outline-none font-bold text-orange-600"
                     >
                       <option value="ACTIVE" className="text-emerald-700">Đã duyệt hoạt động (ACTIVE)</option>
-                      <option value="PENDING_APPROVAL" className="text-amber-700">Chờ duyệt (PENDING_APPROVAL)</option>
-                      <option value="BLOCKED" className="text-red-700">Tạm dừng dừng / Khóa (BLOCKED)</option>
+                      <option value="PENDING" className="text-amber-700">Chờ duyệt (PENDING)</option>
+                      <option value="SUSPENDED" className="text-red-700">Tạm đình chỉ / khóa (SUSPENDED)</option>
+                      <option value="BANNED" className="text-red-900">Cấm hoạt động vĩnh viễn (BANNED)</option>
                     </select>
                   </div>
                 </div>
