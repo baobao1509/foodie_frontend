@@ -1,217 +1,276 @@
 import React, { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { AppContextType, Restaurant, MenuItem, Order, OrderStatus } from '../types';
-import { ToggleLeft, ToggleRight, Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2 } from 'lucide-react';
-import AddDishForm from '../components/partner/AddDishForm';
+import { Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2, ListOrdered } from 'lucide-react';
 import StoreStatusToggle from '../components/partner/StoreStatusToggle';
+import MenuManagementModal from '../components/partner/MenuManagementModal';
 
 export default function PartnerDashboard() {
   const {
     restaurants,
+    setRestaurants,
     orders,
     onToggleStoreState,
     onAddMenuItem,
     onRemoveMenuItem,
     onUpdateOrderStatus,
+    currentUser,
   } = useOutletContext<AppContextType>();
+
   // Choose which restaurant inside partner credentials dashboard
-  const [selectedResId, setSelectedResId] = useState(restaurants[0]?.id || '');
+  const [selectedResId, setSelectedResId] = useState('');
+
+  // Tự động đồng bộ và lựa chọn nhà hàng thuộc sở hữu của đối tác hoặc nhà hàng hợp lệ từ DB
+  React.useEffect(() => {
+    if (restaurants.length > 0) {
+      if (currentUser && currentUser.role === 'PARTNER') {
+        const myStore = restaurants.find(r => String(r.ownerId) === String(currentUser.id));
+        if (myStore) {
+          setSelectedResId(myStore.id);
+          return;
+        }
+      }
+      
+      // Kiểm tra xem ID đã chọn hiện tại có hợp lệ trong danh sách mới không
+      const isValid = restaurants.some(r => r.id === selectedResId);
+      if (!isValid) {
+        setSelectedResId(restaurants[0].id);
+      }
+    }
+  }, [restaurants, currentUser, selectedResId]);
+
+  // Modal open status for detailed master detail menu
+  const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
 
   const activeRes = restaurants.find(r => r.id === selectedResId);
   const activeResOrders = orders.filter(o => o.restaurantId === selectedResId);
 
   return (
-    <div className="bg-gray-50 min-h-screen py-8">
+    <div className="bg-gray-50 min-h-screen py-8 font-sans">
       <main className="max-w-6xl mx-auto px-4 md:px-8">
         
         {/* Upper Dashboard header banner */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-gray-950 font-sans tracking-tight">Cổng quản lý nhà hàng Đối tác</h1>
-          <p className="text-xs text-gray-400 font-semibold mt-1 uppercase tracking-wide">
-            Kiểm soát menu món ăn ẩm thực, quản lý đơn hàng & cấu hình hoạt động nhà hàng trực tiếp
+        <div className="mb-8 p-6 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 rounded-2xl text-white shadow-lg relative overflow-hidden">
+          <div className="absolute right-[-20px] top-[-20px] w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
+          <h1 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
+            <span>🛡️</span>
+            <span>Trang quản trị của riêng nhà hàng {activeRes?.name || ''}</span>
+          </h1>
+          <p className="text-[11px] text-indigo-200/80 font-bold mt-1 uppercase tracking-wider">
+            Cấu hình danh mục, thực phẩm & cấu trúc Topping đi kèm đồng bộ Spring DTO theo mô hình Master-Detail
           </p>
         </div>
 
-        {/* Quick selector of store list */}
-        <div className="bg-white rounded-2xl border border-gray-150 p-4 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-400 uppercase">Đối tác quản trị:</span>
-            <select
-              value={selectedResId}
-              onChange={(e) => setSelectedResId(e.target.value)}
-              className="bg-gray-50 border border-gray-200 text-sm font-bold text-gray-800 rounded-xl px-4 py-2 outline-hidden cursor-pointer"
-            >
-              {restaurants.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="text-xs text-gray-400 font-semibold">
-            Đang hiển thị điều khiển: <b className="text-gray-900 font-bold">{activeRes?.name}</b>
-          </div>
-        </div>
-
         {activeRes ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            {/* Left columns: Store Settings status & Live Orders lists (8 cols) */}
-            <div className="lg:col-span-8 flex flex-col gap-6">
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
-              {/* Cài đặt mở cửa đóng cửa */}
-              <StoreStatusToggle
-                isOpen={activeRes.isOpen}
-                onToggleStoreState={() => onToggleStoreState(activeRes.id)}
-              />
+              {/* Left Column: Management Tools & Controls (4 cols) */}
+              <div className="lg:col-span-4 flex flex-col gap-6">
+                
+                {/* Cài đặt mở cửa đóng cửa */}
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
+                  <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2">Trạng thái nhà hàng</h3>
+                  <StoreStatusToggle
+                    isOpen={activeRes.isOpen}
+                    onToggleStoreState={() => onToggleStoreState(activeRes.id)}
+                  />
+                </div>
 
-              {/* Real-time Order Control lists from this restaurant */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs">
-                <h3 className="font-bold text-sm text-gray-950 uppercase tracking-wider pb-4 border-b border-gray-100 mb-4 flex items-center gap-2">
-                  <span>🛎️</span>
-                  <span>Đơn hàng đang chờ xử lý ({activeResOrders.filter(o => o.status !== 'COMPLETED').length} đơn)</span>
-                </h3>
+                {/* Highly-styled Master Detail Menu Manager Invitation card */}
+                <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs flex flex-col text-left select-none relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-bl-full -z-0 transition-all group-hover:scale-110" />
+                  
+                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 mb-4 z-10 relative">
+                    <Store className="w-6 h-6" />
+                  </div>
+                  
+                  <h3 className="font-sans font-black text-gray-950 text-sm uppercase tracking-wide z-10 relative">Quản lý Thực đơn chi tiết</h3>
+                  <p className="text-xs text-gray-500 mt-2.5 leading-relaxed font-medium z-10 relative">
+                    Khởi tạo & hiệu đính liên hợp các thực thể <b>Category (Danh mục)</b>, <b>MenuItem (Món ăn)</b> & <b>MenuItemOption (Toppings)</b> đồng bộ.
+                  </p>
+                  
+                  <button
+                    onClick={() => setIsMenuModalOpen(true)}
+                    className="mt-6 w-full bg-orange-600 text-white hover:bg-orange-700 font-black text-xs py-3 px-4 rounded-xl shadow-md shadow-orange-900/10 transition-all uppercase cursor-pointer flex items-center justify-center gap-1.5 z-10 relative"
+                  >
+                    <span>🍔 Quản lý Thực đơn (Master-Detail)</span>
+                  </button>
+                </div>
 
-                {activeResOrders.length > 0 ? (
-                  <div className="flex flex-col gap-4">
-                    {activeResOrders.map((ord) => (
-                      <div key={ord.id} className="border border-gray-150 rounded-2xl p-4 bg-gray-50/50">
-                        <div className="flex justify-between items-start pb-2.5 border-b border-gray-200/50">
-                          <div>
-                            <span className="font-mono text-xs font-black text-gray-950">ĐƠN #{ord.id}</span>
-                            <span className="text-[10px] text-gray-400 font-bold ml-2">({ord.createdAt})</span>
-                          </div>
-                          <div>
-                            <span className="text-sm font-black text-orange-600 font-sans">
-                              {ord.total.toLocaleString('vi-VN')} đ
-                            </span>
-                          </div>
-                        </div>
+                {/* Quick stats summarizing core records */}
+                <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 text-left shadow-xs">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                    <span>📊</span>
+                    <span>Tóm tắt thông số bếp</span>
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-white/5 rounded-xl">
+                      <p className="text-[10px] text-slate-450 uppercase font-black">Trong Thực Đơn</p>
+                      <p className="text-lg font-black font-mono text-white mt-1">{activeRes.menu.length} món</p>
+                    </div>
+                    <div className="p-3 bg-white/5 rounded-xl">
+                      <p className="text-[10px] text-slate-450 uppercase font-black">Đơn hành ngày</p>
+                      <p className="text-lg font-black font-mono text-orange-400 mt-1">{orders.filter(o => o.restaurantId === activeRes.id).length} đơn</p>
+                    </div>
+                  </div>
+                </div>
 
-                        {/* List items cooked inside this order */}
-                        <div className="py-3 text-xs text-gray-700 font-medium">
-                          {ord.items.map((it) => (
-                            <div key={it.menuItem.id} className="flex justify-between py-0.5">
-                              <span>• {it.menuItem.name} <b className="text-gray-900">x{it.quantity}</b></span>
-                              <span>{(it.menuItem.price * it.quantity).toLocaleString('vi-VN')} đ</span>
+              </div>
+
+              {/* Right Column: Live Orders management dashboard (8 cols) */}
+              <div className="lg:col-span-8 flex flex-col gap-6">
+                
+                {/* Real-time Order Control lists from this restaurant */}
+                <div className="bg-white rounded-2xl border border-gray-150 p-6 shadow-xs">
+                  <h3 className="font-bold text-sm text-gray-950 uppercase tracking-wider pb-4 border-b border-gray-100 mb-4 flex items-center gap-2 text-left">
+                    <span>🛎️</span>
+                    <span>Đơn hàng đang chờ xử lý ({activeResOrders.filter(o => o.status !== 'COMPLETED').length} đơn)</span>
+                  </h3>
+
+                  {activeResOrders.length > 0 ? (
+                    <div className="flex flex-col gap-4">
+                      {activeResOrders.map((ord) => (
+                        <div key={ord.id} className="border border-gray-150 rounded-2xl p-4 bg-gray-50/50 text-left">
+                          <div className="flex justify-between items-start pb-2.5 border-b border-gray-200/50">
+                            <div>
+                              <span className="font-mono text-xs font-black text-gray-950">ĐƠN #{ord.id}</span>
+                              <span className="text-[10px] text-gray-400 font-bold ml-2">({ord.createdAt})</span>
                             </div>
-                          ))}
-                        </div>
-
-                        {/* Delivery address details */}
-                        <div className="p-3 bg-white border border-gray-100 rounded-xl text-xs text-gray-500 mb-4 font-normal">
-                          <p className="font-semibold text-gray-800">Người nhận: {ord.recipientName} ({ord.recipientPhone})</p>
-                          <p className="mt-0.5">Địa chỉ: {ord.shippingAddress}</p>
-                        </div>
-
-                        {/* Action controllers buttons inside restaurant partner dashboard */}
-                        <div className="flex flex-wrap items-center justify-between gap-2.5">
-                          <div>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase mr-1.5">Trạng thái hiện tại:</span>
-                            <span className="bg-orange-100 text-orange-850 font-bold text-[10px] px-2 py-1 rounded-sm uppercase tracking-wide">
-                              {ord.status}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {ord.status === 'PENDING' && (
-                              <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'PREPARING')}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
-                              >
-                                Chấp nhận nấu món 🍳
-                              </button>
-                            )}
-                            {ord.status === 'PREPARING' && (
-                              <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'SHIPPING')}
-                                className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
-                              >
-                                Giao tài xế mang đi 🛵
-                              </button>
-                            )}
-                            {ord.status === 'SHIPPING' && (
-                              <button
-                                onClick={() => onUpdateOrderStatus(ord.id, 'COMPLETED')}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
-                              >
-                                Hoàn tất giao hàng ✓
-                              </button>
-                            )}
-                            {ord.status === 'COMPLETED' && (
-                              <span className="text-emerald-600 font-bold text-xs flex items-center gap-1">
-                                <CheckCircle2 className="w-4 h-4" /> Đã hoàn tất thành công
+                            <div>
+                              <span className="text-sm font-black text-orange-600 font-sans">
+                                {ord.total.toLocaleString('vi-VN')} đ
                               </span>
-                            )}
+                            </div>
+                          </div>
+
+                          {/* List items cooked inside this order */}
+                          <div className="py-3 text-xs text-gray-700 font-medium space-y-1">
+                            {ord.items.map((it) => (
+                              <div key={it.menuItem.id} className="flex justify-between py-0.5">
+                                <span>• {it.menuItem.name} <b className="text-gray-900">x{it.quantity}</b></span>
+                                <span>{(it.menuItem.price * it.quantity).toLocaleString('vi-VN')} đ</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Delivery address details */}
+                          <div className="p-3 bg-white border border-gray-100 rounded-xl text-xs text-gray-500 mb-4 font-normal">
+                            <p className="font-semibold text-gray-800">Người nhận: {ord.recipientName} ({ord.recipientPhone})</p>
+                            <p className="mt-0.5">Địa chỉ: {ord.shippingAddress}</p>
+                          </div>
+
+                          {/* Action controllers buttons inside restaurant partner dashboard */}
+                          <div className="flex flex-wrap items-center justify-between gap-2.5">
+                            <div>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase mr-1.5">Trạng thái:</span>
+                              <span className="bg-orange-100 text-orange-850 font-bold text-[10px] px-2 py-1 rounded-sm uppercase tracking-wide">
+                                {ord.status}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {ord.status === 'PENDING' && (
+                                <button
+                                  onClick={() => onUpdateOrderStatus(ord.id, 'PREPARING')}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
+                                >
+                                  Chấp nhận nấu món 🍳
+                                </button>
+                              )}
+                              {ord.status === 'PREPARING' && (
+                                <button
+                                  onClick={() => onUpdateOrderStatus(ord.id, 'SHIPPING')}
+                                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
+                                >
+                                  Giao tài xế mang đi 🛵
+                                </button>
+                              )}
+                              {ord.status === 'SHIPPING' && (
+                                <button
+                                  onClick={() => onUpdateOrderStatus(ord.id, 'COMPLETED')}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl cursor-pointer"
+                                >
+                                  Hoàn tất giao hàng ✓
+                                </button>
+                              )}
+                              {ord.status === 'COMPLETED' && (
+                                <span className="text-emerald-600 font-bold text-xs flex items-center gap-1">
+                                  <CheckCircle2 className="w-4 h-4" /> Đã hoàn tất thành công
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10">
+                      <span className="text-4xl select-none">📭</span>
+                      <p className="text-gray-400 font-semibold text-xs mt-2.5">Nhà hàng chưa ghi nhận đơn hàng nào hôm nay</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Simple Summary Quick-look list of current active menu items */}
+                <div className="bg-white rounded-2xl border border-gray-150 p-6 shadow-xs">
+                  <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4 bg-white shrink-0">
+                    <h3 className="font-bold text-sm text-gray-920 uppercase tracking-widest text-left">
+                      Khảo sát Thực đơn ({activeRes.menu.length} món)
+                    </h3>
+                    <button
+                      onClick={() => setIsMenuModalOpen(true)}
+                      className="px-3.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                    >
+                      Bấm để tinh chỉnh chi tiết
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {activeRes.menu.slice(0, 6).map((food) => (
+                      <div key={food.id} className="flex justify-between items-center p-3.5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:border-gray-150 transition-all text-left">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={food.imageUrl}
+                            alt={food.name}
+                            className="w-10 h-10 rounded-xl object-cover shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs text-gray-900 truncate">{food.name}</p>
+                            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider truncate mt-0.5">{food.category}</p>
+                          </div>
+                        </div>
+
+                        <span className="font-mono font-bold text-xs text-gray-900 shrink-0">
+                          {food.price.toLocaleString('vi-VN')} đ
+                        </span>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="text-center py-10">
-                    <span className="text-4xl select-none">📭</span>
-                    <p className="text-gray-400 font-semibold text-xs mt-2.5">Nhà hàng chưa ghi nhận đơn hàng nào hôm nay</p>
-                  </div>
-                )}
-              </div>
 
-              {/* List menu culinary layout items editing table */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs">
-                <h3 className="font-bold text-sm text-gray-920 uppercase tracking-widest pb-4 border-b border-gray-100 mb-4">
-                  Quản lý danh sách thực đơn ({activeRes.menu.length} món)
-                </h3>
-
-                <div className="flex flex-col gap-3">
-                  {activeRes.menu.map((food) => (
-                    <div key={food.id} className="flex justify-between items-center p-3.5 bg-gray-50 border border-gray-100 rounded-2xl hover:border-gray-200 transition-all">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={food.imageUrl}
-                          alt={food.name}
-                          className="w-12 h-12 rounded-xl object-cover"
-                        />
-                        <div>
-                          <p className="font-bold text-sm text-gray-900">{food.name}</p>
-                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">{food.category}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <span className="font-mono font-bold text-sm text-gray-900">
-                          {food.price.toLocaleString('vi-VN')} đ
-                        </span>
-
-                        <button
-                          onClick={() => {
-                            if (confirm(`Bạn chắc chắn muốn xoá món ${food.name} khỏi thực đơn?`)) {
-                              onRemoveMenuItem(activeRes.id, food.id);
-                            }
-                          }}
-                          className="text-gray-400 hover:text-red-650 transition-colors cursor-pointer"
-                          title="Xoá món ăn"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  {activeRes.menu.length > 6 && (
+                    <p className="text-center text-[10px] text-gray-400 font-bold mt-4">
+                      Và {activeRes.menu.length - 6} món ngon ẩm thực khác. Bấm vào nút Quản lý Thực đơn để xem đầy đủ.
+                    </p>
+                  )}
                 </div>
+
               </div>
 
             </div>
 
-            {/* Right column: Add dish form sidebar (4 cols) */}
-            <div className="lg:col-span-4 self-start flex flex-col gap-6 lg:sticky lg:top-24">
-              <AddDishForm
-                selectedResId={activeRes.id}
-                onAddMenuItem={onAddMenuItem}
-              />
-            </div>
-
-          </div>
+            {/* Render the core Master Detail Menu Editor Modal */}
+            <MenuManagementModal
+              isOpen={isMenuModalOpen}
+              onClose={() => setIsMenuModalOpen(false)}
+              restaurant={activeRes}
+              setRestaurants={setRestaurants}
+              allRestaurants={restaurants}
+            />
+          </>
         ) : (
-          <div className="text-center py-16">
-            <p className="text-gray-500 font-medium">Bạn chưa đăng ký bất kỳ cửa hàng đối tác nào.</p>
+          <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 p-8 shadow-xs">
+            <p className="text-gray-500 font-semibold text-sm">Bạn chưa kích hoạt hoặc đăng ký bất kỳ cửa hàng đối tác nào trong hệ thống.</p>
           </div>
         )}
 

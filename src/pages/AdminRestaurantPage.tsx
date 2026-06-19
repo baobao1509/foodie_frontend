@@ -4,7 +4,7 @@ import { AppContextType, Restaurant, UserRole } from '../types';
 import {
   getRestaurantsAdminPaginated,
   updateRestaurantStatusInBackend,
-  deleteRestaurantInBackend,
+  removeRestaurantInBackend,
   createRestaurant,
   approveRestaurantInBackend,
   suspendRestaurantInBackend,
@@ -393,7 +393,7 @@ export default function AdminRestaurantsPage() {
       const { id, name } = deleteConfirm;
       setIsLoading(true);
       try {
-        await deleteRestaurantInBackend(id);
+        await removeRestaurantInBackend(id, currentUser);
         setRestaurants(restaurants.filter(res => res.id !== id));
         setAlertMsg({ type: 'success', text: `Đã loại bỏ hồ sơ đối tác "${name}" khỏi cơ sở dữ liệu.` });
         setDeleteConfirm(null);
@@ -594,7 +594,7 @@ export default function AdminRestaurantsPage() {
                 <ChevronRight className="w-3 h-3" />
                 <span className="text-orange-600">Quản lý Đối tác Nhà hàng (Spring Boot DTO)</span>
               </div>
-              <h1 className="text-2xl font-black text-gray-950 tracking-tight">
+              <h1 className="text-2xl font-black text-gray-955 tracking-tight">
                 Danh mục Đối tác & Kiểm duyệt
               </h1>
             </div>
@@ -715,7 +715,7 @@ export default function AdminRestaurantsPage() {
             <div className="bg-white rounded-3xl border border-gray-150 shadow-xs overflow-hidden">
               <div className="p-6 border-b border-gray-150 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-gray-50/50">
                 <div>
-                  <h2 className="text-sm font-black text-gray-950 uppercase tracking-wider">Hồ sơ đối tác nhà hàng liên kết Spring Boot</h2>
+                  <h2 className="text-sm font-black text-gray-955 uppercase tracking-wider">Hồ sơ đối tác nhà hàng liên kết Spring Boot</h2>
                   <p className="text-[11px] text-gray-400 mt-1">
                     Hệ thống tự động hiển thị đầy đủ thông số địa chỉ, số điện thoại, tọa độ, email, và đối tác quản lý tương thích với RestaurantsResponseDTO.
                   </p>
@@ -976,7 +976,7 @@ export default function AdminRestaurantsPage() {
 
                           {/* 5. Cổng thanh toán liên kết PayOS & QR Code */}
                           {(res.payosAccountId || res.qrCodeUrl) && (
-                            <div className="mt-4 bg-orange-50/70 p-4 rounded-2xl border border-orange-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div className="mt-4 bg-orange-50/70 p-4 rounded-2xl border border-orange-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 col-span-1 md:col-span-2 xl:col-span-4">
                               <div className="space-y-1">
                                 <span className="text-[10px] text-orange-600 font-bold uppercase tracking-wider block">🏦 Cổng thanh toán PayOS đối tác</span>
                                 <div className="flex items-center gap-2">
@@ -1116,7 +1116,7 @@ export default function AdminRestaurantsPage() {
             </button>
 
             <div className="border-b border-gray-100 pb-3 mb-5">
-              <h3 className="font-black text-lg text-gray-950 leading-tight">
+              <h3 className="font-black text-lg text-gray-955 leading-tight">
                 {formMode === 'create' ? 'Đăng ký nhà hàng liên kết đối tác mới' : 'Cập nhật thông tin chi tiết đối tác'}
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">

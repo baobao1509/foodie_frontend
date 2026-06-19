@@ -117,6 +117,22 @@ export const unblockRestaurantInBackend = async (
   return res.data;
 };
 
+export const removeRestaurantInBackend = async (
+  restaurantId: string,
+  currentUser: UserSummaryDTO
+): Promise<any> => {
+  const params = { restaurantId };
+  const body = {
+    id: currentUser.id,
+    fullName: currentUser.fullName,
+    avatarUrl: currentUser.avatarUrl,
+    role: currentUser.role
+  };
+
+  const res = await api.post('/admin/restaurants/remove', body, { params });
+  return res.data;
+};
+
 export const createRestaurant = async (payload: any): Promise<any> => {
   try {
     // Thử gọi qua URL config của Nginx reverse-proxy trước

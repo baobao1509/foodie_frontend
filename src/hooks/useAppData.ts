@@ -7,6 +7,25 @@ export function useAppData(currentUser: any, triggerPath?: string) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>(MOCK_RESTAURANTS);
   const [orders, setOrders] = useState<Order[]>([]);
 
+  // Tự động đồng bộ danh sách nhà hàng thời gian thực từ Backend DB khi khởi chạy ứng dụng (giúp F5 hoạt động chuẩn)
+  useEffect(() => {
+    let active = true;
+    const fetchLiveRestaurants = async () => {
+      try {
+        const liveList = await apiGetRestaurants();
+        if (active && liveList && liveList.length > 0) {
+          setRestaurants(liveList);
+        }
+      } catch (err) {
+        console.warn('[useAppData] Đồng hành lấy danh sách nhà hàng trực tiếp bị gián đoạn, sử dụng Mock dự phòng:', err);
+      }
+    };
+    fetchLiveRestaurants();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Callback khi KHÁCH đặt đơn hàng mới thành công
   const onPlaceOrder = (newOrder: Order) => {
     setOrders((prev) => [newOrder, ...prev]);
