@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { AppContextType, Restaurant, MenuItem, Order, OrderStatus } from '../types';
 import { Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2, ListOrdered } from 'lucide-react';
@@ -21,7 +21,7 @@ export default function PartnerDashboard() {
   const [selectedResId, setSelectedResId] = useState('');
 
   // Tự động đồng bộ và lựa chọn nhà hàng thuộc sở hữu của đối tác hoặc nhà hàng hợp lệ từ DB
-  React.useEffect(() => {
+  useEffect(() => {
     if (restaurants.length > 0) {
       if (currentUser && currentUser.role === 'PARTNER') {
         const myStore = restaurants.find(r => String(r.ownerId) === String(currentUser.id));
