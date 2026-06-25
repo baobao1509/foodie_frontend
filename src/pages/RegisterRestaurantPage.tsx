@@ -15,6 +15,22 @@ const PRESET_COVERS = [
   { url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80', name: 'Tiệm Bánh & Tráng miệng' },
 ];
 
+// Helper functions to calculate SHA-256 hash of a file on client-side
+async function calculateFileSHA256Hex(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function calculateFileSHA256Base64(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const binaryString = hashArray.map(b => String.fromCharCode(b)).join('');
+  return btoa(binaryString);
+}
+
 export default function RegisterRestaurantPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -263,6 +279,11 @@ export default function RegisterRestaurantPage() {
       setIsSubmitting(false);
       return;
     }
+    if (selectedFile.size > 10485760) {
+      setErrorMessage('Kích thước ảnh bìa vượt quá giới hạn cho phép (10MB)!');
+      setIsSubmitting(false);
+      return;
+    }
     if (!payosAccountId.trim()) {
       setErrorMessage('Tài khoản PayOS không được trống!');
       setIsSubmitting(false);
@@ -271,16 +292,25 @@ export default function RegisterRestaurantPage() {
 
     try {
       // Step A: Request AWS S3 Presigned URL from Backend
-      // GET /api/v1/upload/presign with query params folder, fileName, contentType
+      // Calculate SHA-256 hash on client-side
+      const sha256Base64 = await calculateFileSHA256Base64(selectedFile);
+
+      // GET /api/v1/upload/presign with query params folder, fileName, contentType, fileSize, checksum
       const presignRes = await api.get('/upload/presign', {
         params: {
           folder: 'restaurant-cover-images',
           fileName: selectedFile.name,
           contentType: selectedFile.type,
+          fileSize: selectedFile.size, // Pass fileSize to backend so it can double check
+          checksum: sha256Base64, // Must be SHA-256 Base64 format for AWS S3 SDK v2 .checksumSHA256()
         }
       });
 
-      const { presignedUrl, imageURL } = presignRes.data;
+      const responseData = presignRes.data;
+      const dataObj = responseData?.data || responseData;
+      const presignedUrl = dataObj?.presignedUrl || dataObj?.url || dataObj?.presigned_url;
+      const imageURL = dataObj?.imageURL || dataObj?.key || dataObj?.s3_key;
+
       if (!presignedUrl || !imageURL) {
         throw new Error('Không thể nhận liên kết tải ảnh lên (S3 Presigned URL) từ server. Vui lòng thử lại!');
       }
@@ -289,7 +319,9 @@ export default function RegisterRestaurantPage() {
       // We must use a clean axios PUT call without any default auth headers or withCredentials options that might taint the AWS signature.
       await axios.put(presignedUrl, selectedFile, {
         headers: {
-          'Content-Type': selectedFile.type
+          'Content-Type': selectedFile.type,
+          'x-amz-checksum-sha256': sha256Base64, // Standard S3 SHA-256 checksum validation header
+          'x-amz-sdk-checksum-algorithm': 'SHA256' // Required to match the AWS SDK v2 presigner's signed headers
         }
       });
 
@@ -310,7 +342,7 @@ export default function RegisterRestaurantPage() {
         closingTime: closingTime ? closingTime + ':00' : undefined,
         minOrderValue: parseFloat(minOrderValue) || 0,
         deliveryFee: parseFloat(deliveryFee) || 0,
-        coverImageUrl: imageURL, // Changed coverImageUrl to s3Key as requested
+        coverImageUrl: imageURL, // Changed coverImageUrl to imageURL as requested
         payosAccountId: payosAccountId.trim(),
       };
 
@@ -726,6 +758,10 @@ export default function RegisterRestaurantPage() {
                         setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
                         return;
                       }
+                      if (file.size > 10485760) {
+                        setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
+                        return;
+                      }
                       setSelectedFile(file);
                       const localPreview = URL.createObjectURL(file);
                       setPreviewUrl(localPreview);
@@ -747,6 +783,10 @@ export default function RegisterRestaurantPage() {
                       if (file) {
                         if (!file.type.startsWith('image/')) {
                           setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
+                          return;
+                        }
+                        if (file.size > 10485760) {
+                          setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
                           return;
                         }
                         setSelectedFile(file);

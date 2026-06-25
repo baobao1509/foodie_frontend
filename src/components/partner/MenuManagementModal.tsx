@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Restaurant, MenuItem } from '../../types';
 import { 
   createCategoryInBackend, 
   deleteCategoryInBackend, 
   createMenuItemInBackend, 
   deleteMenuItemInBackend,
-  submitFullMenuToBackend
+  submitFullMenuToBackend,
+  api
 } from '../../api';
 import { 
   X, Plus, Edit2, Trash2, Check, ArrowRight, Save, ToggleLeft, 
   ToggleRight, Award, DollarSign, ListOrdered, Layers, Grid, UtensilsCrossed,
-  CloudUpload, Code, Copy, Database
+  CloudUpload, Code, Copy, Database, Image
 } from 'lucide-react';
 
 interface MenuManagementModalProps {
@@ -32,6 +34,22 @@ interface OptionDTO {
   optionName: string;
   extraPrice: number;
   isDefault: boolean;
+}
+
+// Helper functions to calculate SHA-256 hash of a file on client-side
+async function calculateFileSHA256Hex(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function calculateFileSHA256Base64(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const binaryString = hashArray.map(b => String.fromCharCode(b)).join('');
+  return btoa(binaryString);
 }
 
 export default function MenuManagementModal({
@@ -67,6 +85,11 @@ export default function MenuManagementModal({
   const [itemDisplayOrder, setItemDisplayOrder] = useState(1);
   const [itemOptions, setItemOptions] = useState<OptionDTO[]>([]);
 
+  // Local File Upload states for each active menu item
+  const [selectedItemFile, setSelectedItemFile] = useState<File | null>(null);
+  const [itemPreviewUrl, setItemPreviewUrl] = useState<string>('');
+  const [itemFiles, setItemFiles] = useState<Record<string, File>>({});
+
   // Form states to add custom option rows
   const [optGroupName, setOptGroupName] = useState('Size');
   const [optOptionName, setOptOptionName] = useState('');
@@ -85,6 +108,85 @@ export default function MenuManagementModal({
   const handleSubmitCollectiveData = async () => {
     setIsLoading(true);
     try {
+      // Step 0: Validate collective list sizes
+      if (categories.length === 0) {
+        throw new Error('Thực đơn phải có ít nhất 1 danh mục món ăn!');
+      }
+      if (categories.length > 20) {
+        throw new Error('Số lượng danh mục không được vượt quá 20 danh mục!');
+      }
+
+      let totalMenuItemsCount = 0;
+      for (const cat of categories) {
+        const itemsForCat = restaurant.menu.filter(
+          item => (item.category || '').toLowerCase() === cat.name.toLowerCase()
+        );
+        if (itemsForCat.length === 0) {
+          throw new Error(`Danh mục "${cat.name}" hiện không có món ăn nào! Hãy thêm ít nhất 1 món ăn hoặc xoá danh mục này.`);
+        }
+        if (itemsForCat.length > 50) {
+          throw new Error(`Danh mục "${cat.name}" vượt quá giới hạn cho phép (tối đa 50 món mỗi danh mục)!`);
+        }
+        totalMenuItemsCount += itemsForCat.length;
+
+        for (const item of itemsForCat) {
+          const options = (item as any).options || [];
+          if (options.length > 25) {
+            throw new Error(`Món ăn "${item.name}" trong danh mục "${cat.name}" có quá nhiều tuỳ chọn (tối đa 25 tuỳ chọn)!`);
+          }
+        }
+      }
+
+      if (totalMenuItemsCount > 200) {
+        throw new Error('Tổng số lượng món ăn trong thực đơn của nhà hàng không được vượt quá 200 món!');
+      }
+
+      // Step A: Upload all new files for menu items to S3 and resolve their S3 Keys
+      const resolvedImageUrls: Record<string, string> = {};
+
+      for (const [itemId, fileObj] of Object.entries(itemFiles)) {
+        const file = fileObj as File;
+        try {
+          // Double check file size before upload (must be <= 10MB)
+          if (file.size > 10485760) {
+            throw new Error(`Kích thước tệp tin ${file.name} vượt quá giới hạn cho phép (10MB)!`);
+          }
+
+          // Calculate SHA-256 hash on client-side
+          const sha256Base64 = await calculateFileSHA256Base64(file);
+
+          // Get presigned URL with fileSize and checksum params
+          const presignRes = await api.get('/upload/presign', {
+            params: {
+              folder: 'menu-items',
+              fileName: file.name,
+              contentType: file.type,
+              fileSize: file.size, // Pass fileSize to backend so it can double check
+              checksum: sha256Base64, // Must be SHA-256 Base64 format for AWS S3 SDK v2 .checksumSHA256()
+            }
+          });
+
+          const { presignedUrl, imageURL } = presignRes.data;
+          if (!presignedUrl || !imageURL) {
+            throw new Error(`Không nhận được link tải lên cho ${file.name}`);
+          }
+
+          // Upload to S3 with headers to enforce SHA-256 integrity check
+          await axios.put(presignedUrl, file, {
+            headers: {
+              'Content-Type': file.type,
+              'x-amz-checksum-sha256': sha256Base64, // Standard S3 SHA-256 checksum validation header
+              'x-amz-sdk-checksum-algorithm': 'SHA256' // Required to match the AWS SDK v2 presigner's signed headers
+            }
+          });
+
+          resolvedImageUrls[itemId] = imageURL;
+        } catch (uploadErr: any) {
+          console.error(`Lỗi tải ảnh của món ${itemId} lên S3:`, uploadErr);
+          throw new Error(uploadErr.message || `Tải ảnh cho món ăn thất bại: ${file.name}`);
+        }
+      }
+
       // Map categories to list with menuItems nested
       const categoriesPayload = categories
         .sort((a,b) => a.displayOrder - b.displayOrder)
@@ -94,10 +196,15 @@ export default function MenuManagementModal({
           );
 
           const menuItemsPayload = itemsForCat.map((item, index) => {
+            let finalImageUrl = resolvedImageUrls[item.id] || item.imageUrl || '';
+            if (finalImageUrl.startsWith('blob:')) {
+              finalImageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
+            }
+
             return {
               name: item.name,
               description: item.description || '',
-              imageUrl: item.imageUrl || '',
+              imageUrl: finalImageUrl,
               price: item.price,
               originalPrice: (item as any).originalPrice || null,
               isAvailable: (item as any).isAvailable !== false,
@@ -123,9 +230,9 @@ export default function MenuManagementModal({
       setGeneratedPayload(finalPayload);
       setShowPayloadPreview(true);
       showToast('Đã đồng bộ thực đơn dạng DTO lên API thành công!');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showToast('Gửi dữ liệu lên API thất bại.', 'error');
+      showToast(err.message || 'Gửi dữ liệu lên API thất bại.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -168,39 +275,23 @@ export default function MenuManagementModal({
   );
 
   // --- CATEGORY OPERATIONS ---
-  const handleAddCategory = async (e: React.FormEvent) => {
+  const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
 
-    setIsLoading(true);
-    const apiPayload = {
+    const generatedId = `cat-${Date.now()}`;
+    const newCategory: CategoryDTO = {
+      id: generatedId,
       name: newCatName.trim(),
-      displayOrder: Number(newCatOrder) || 1,
-      restaurantid: restaurant.id
+      displayOrder: Number(newCatOrder) || 1
     };
 
-    try {
-      const result = await createCategoryInBackend(apiPayload);
-      const generatedId = result.id || `cat-${Date.now()}`;
-      
-      const newCategory: CategoryDTO = {
-        id: generatedId,
-        name: apiPayload.name,
-        displayOrder: apiPayload.displayOrder
-      };
-
-      setCategories(prev => [...prev, newCategory]);
-      setSelectedCatId(generatedId);
-      setNewCatName('');
-      setNewCatOrder(Number(newCatOrder) + 1);
-      setIsAddingCat(false);
-      showToast('Đã lưu danh mục mới lên server thành công!');
-    } catch (err) {
-      console.error(err);
-      showToast('Có lỗi xảy ra khi tạo danh mục.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
+    setCategories(prev => [...prev, newCategory]);
+    setSelectedCatId(generatedId);
+    setNewCatName('');
+    setNewCatOrder(Number(newCatOrder) + 1);
+    setIsAddingCat(false);
+    showToast('Đã thêm danh mục mới thành công!');
   };
 
   const handleStartEditCategory = (cat: CategoryDTO) => {
@@ -209,93 +300,69 @@ export default function MenuManagementModal({
     setEditingCatOrder(cat.displayOrder);
   };
 
-  const handleSaveEditCategory = async (catId: string) => {
+  const handleSaveEditCategory = (catId: string) => {
     if (!editingCatName.trim()) return;
 
-    setIsLoading(true);
-    try {
-      const payload = {
-        name: editingCatName.trim(),
-        displayOrder: Number(editingCatOrder) || 1,
-        restaurantid: restaurant.id
-      };
-      await createCategoryInBackend(payload);
-
-      // Update local state
-      setCategories(prev => prev.map(c => {
-        if (c.id === catId) {
-          return { ...c, name: editingCatName.trim(), displayOrder: Number(editingCatOrder) || 1 };
-        }
-        return c;
-      }));
-
-      // Update menu items matching the old category name to the new name in context
-      const currentCatName = categories.find(c => c.id === catId)?.name || '';
-      if (currentCatName !== editingCatName.trim()) {
-        const updatedMenu = restaurant.menu.map(m => {
-          if (m.category === currentCatName) {
-            return { ...m, category: editingCatName.trim() };
-          }
-          return m;
-        });
-
-        const updatedRestaurants = allRestaurants.map(r => {
-          if (r.id === restaurant.id) {
-            return { ...r, menu: updatedMenu };
-          }
-          return r;
-        });
-        setRestaurants(updatedRestaurants);
+    // Update local state
+    setCategories(prev => prev.map(c => {
+      if (c.id === catId) {
+        return { ...c, name: editingCatName.trim(), displayOrder: Number(editingCatOrder) || 1 };
       }
+      return c;
+    }));
 
-      setEditingCatId(null);
-      showToast('Cập nhật danh mục thành công!');
-    } catch (err) {
-      console.error(err);
-      showToast('Cập nhật danh mục thất bại.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // Update menu items matching the old category name to the new name in context
+    const currentCatName = categories.find(c => c.id === catId)?.name || '';
+    if (currentCatName !== editingCatName.trim()) {
+      const updatedMenu = restaurant.menu.map(m => {
+        if (m.category === currentCatName) {
+          return { ...m, category: editingCatName.trim() };
+        }
+        return m;
+      });
 
-  const handleDeleteCategory = async (catId: string, name: string) => {
-    if (!confirm(`Bạn chắc chắn muốn xoá danh mục "${name}"? Các món ở danh mục này sẽ bị thu hồi.`)) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await deleteCategoryInBackend(catId);
-      
-      // Remove local category
-      setCategories(prev => prev.filter(c => c.id !== catId));
-
-      // Wipe out restaurant menu items belonging to deleted category
-      const updatedMenu = restaurant.menu.filter(m => m.category !== name);
       const updatedRestaurants = allRestaurants.map(r => {
         if (r.id === restaurant.id) {
-          return { ...r, menu: updatedMenu, categories: r.categories.filter(c => c !== name) };
+          return { ...r, menu: updatedMenu };
         }
         return r;
       });
       setRestaurants(updatedRestaurants);
-
-      // Select another category if selected was wiped
-      if (selectedCatId === catId) {
-        const remaining = categories.filter(c => c.id !== catId);
-        if (remaining.length > 0) {
-          setSelectedCatId(remaining[0].id);
-        } else {
-          setSelectedCatId('');
-        }
-      }
-
-      showToast(`Đã thu hồi danh mục "${name}" thành công.`);
-    } catch (err) {
-      showToast('Lỗi khi xóa danh mục.', 'error');
-    } finally {
-      setIsLoading(false);
     }
+
+    setEditingCatId(null);
+    showToast('Cập nhật danh mục thành công!');
+  };
+
+  const handleDeleteCategory = (catId: string, name: string) => {
+    if (!confirm(`Bạn chắc chắn muốn xoá danh mục "${name}"? Các món ở danh mục này sẽ bị thu hồi.`)) {
+      return;
+    }
+
+    // Remove local category
+    setCategories(prev => prev.filter(c => c.id !== catId));
+
+    // Wipe out restaurant menu items belonging to deleted category
+    const updatedMenu = restaurant.menu.filter(m => m.category !== name);
+    const updatedRestaurants = allRestaurants.map(r => {
+      if (r.id === restaurant.id) {
+        return { ...r, menu: updatedMenu, categories: r.categories.filter(c => c !== name) };
+      }
+      return r;
+    });
+    setRestaurants(updatedRestaurants);
+
+    // Select another category if selected was wiped
+    if (selectedCatId === catId) {
+      const remaining = categories.filter(c => c.id !== catId);
+      if (remaining.length > 0) {
+        setSelectedCatId(remaining[0].id);
+      } else {
+        setSelectedCatId('');
+      }
+    }
+
+    showToast(`Đã xóa danh mục "${name}" thành công.`);
   };
 
   // --- MENU ITEM FORM TRIGGERS ---
@@ -314,6 +381,8 @@ export default function MenuManagementModal({
     setItemIsFeatured(false);
     setItemDisplayOrder(filteredMenuItems.length + 1);
     setItemOptions([]);
+    setSelectedItemFile(null);
+    setItemPreviewUrl('https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600');
   };
 
   const handleOpenEditMenuItem = (item: MenuItem) => {
@@ -322,6 +391,12 @@ export default function MenuManagementModal({
     setItemDesc(item.description || '');
     setItemImageUrl(item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600');
     setItemPrice(item.price);
+    
+    // Setup file preview and raw file selection if already set
+    const existingFile = itemFiles[item.id] || null;
+    setSelectedItemFile(existingFile);
+    setItemPreviewUrl(item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600');
+
     // Find options inside our local MenuItem properties
     const mappedOpts: OptionDTO[] = (item as any).options || [];
     setItemOptions(mappedOpts);
@@ -329,9 +404,9 @@ export default function MenuManagementModal({
     // Look for tags or prices
     const popularState = item.isPopular;
     setItemIsFeatured(popularState);
-    setItemIsAvailable(true);
-    setItemDisplayOrder(1);
-    setItemOriginalPrice('');
+    setItemIsAvailable((item as any).isAvailable !== false);
+    setItemDisplayOrder((item as any).displayOrder || 1);
+    setItemOriginalPrice((item as any).originalPrice || '');
   };
 
   // --- ITEM OPTION MODIFIERS HANDLERS ---
@@ -372,102 +447,89 @@ export default function MenuManagementModal({
     showToast('Đã gỡ bỏ tùy chọn khỏi khay chế biến.');
   };
 
-  // --- SAVE MENU ITEM ---
-  const handleSaveMenuItem = async (e: React.FormEvent) => {
+  // --- SAVE MENU ITEM (LOCAL ONLY) ---
+  const handleSaveMenuItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName.trim() || !selectedCategoryName) return;
 
-    setIsLoading(true);
-    try {
-      const apiItemPayload = {
-        restaurantId: restaurant.id,
-        categoryId: selectedCatId.startsWith('cat-sim-') || selectedCatId.startsWith('cat-') ? null : selectedCatId,
-        name: itemName.trim(),
-        description: itemDesc.trim(),
-        imageUrl: itemImageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600',
-        price: Number(itemPrice),
-        originalPrice: itemOriginalPrice ? Number(itemOriginalPrice) : null,
-        isAvailable: itemIsAvailable,
-        isFeatured: itemIsFeatured,
-        displayOrder: Number(itemDisplayOrder) || 1,
-        options: itemOptions
-      };
+    const itemId = activeItem === 'new' ? `m-custom-${Date.now()}` : (activeItem as MenuItem).id;
 
-      const resVal = await createMenuItemInBackend(apiItemPayload);
-      const outputId = resVal.id || `m-custom-${Date.now()}`;
+    // Use current preview URL as a temporary imageUrl so it renders properly in lists
+    const finalImageUrl = itemPreviewUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
 
-      // Construct local standard MenuItem representation matching global types
-      const savedLocalItem: MenuItem = {
-        id: activeItem === 'new' ? outputId : (activeItem as MenuItem).id,
-        name: apiItemPayload.name,
-        description: apiItemPayload.description,
-        price: apiItemPayload.price,
-        imageUrl: apiItemPayload.imageUrl,
-        category: selectedCategoryName,
-        isPopular: apiItemPayload.isFeatured
-      };
-      
-      // Store custom DTO attributes options inside local MenuItem
-      (savedLocalItem as any).options = itemOptions;
+    // Construct local standard MenuItem representation matching global types
+    const savedLocalItem: MenuItem = {
+      id: itemId,
+      name: itemName.trim(),
+      description: itemDesc.trim(),
+      price: Number(itemPrice),
+      imageUrl: finalImageUrl,
+      category: selectedCategoryName,
+      isPopular: itemIsFeatured
+    };
+    
+    // Store custom DTO attributes options inside local MenuItem
+    (savedLocalItem as any).options = itemOptions;
+    (savedLocalItem as any).originalPrice = itemOriginalPrice ? Number(itemOriginalPrice) : null;
+    (savedLocalItem as any).isAvailable = itemIsAvailable;
+    (savedLocalItem as any).displayOrder = Number(itemDisplayOrder) || 1;
 
-      let updatedMenu: MenuItem[] = [];
-      if (activeItem === 'new') {
-        updatedMenu = [savedLocalItem, ...restaurant.menu];
-        showToast(`Đã thêm món mới "${itemName}" thành công!`);
-      } else {
-        updatedMenu = restaurant.menu.map(m => {
-          if (m.id === (activeItem as MenuItem).id) {
-            return savedLocalItem;
-          }
-          return m;
-        });
-        showToast(`Đã lưu thay đổi món "${itemName}" thành công!`);
-      }
-
-      // Sync active menu with restaurant context list
-      const updatedRestaurants = allRestaurants.map(r => {
-        if (r.id === restaurant.id) {
-          // If the broad tags "categories" array doesn't list the category, append it
-          const currentTags = r.categories.includes(selectedCategoryName) 
-            ? r.categories 
-            : [...r.categories, selectedCategoryName];
-          return { ...r, menu: updatedMenu, categories: currentTags };
-        }
-        return r;
-      });
-
-      setRestaurants(updatedRestaurants);
-      setActiveItem(null);
-    } catch (err) {
-      console.error(err);
-      showToast('Tác vụ lưu món ăn thất bại.', 'error');
-    } finally {
-      setIsLoading(false);
+    // Cache raw file if chosen
+    if (selectedItemFile) {
+      setItemFiles(prev => ({ ...prev, [itemId]: selectedItemFile }));
     }
+
+    let updatedMenu: MenuItem[] = [];
+    if (activeItem === 'new') {
+      updatedMenu = [savedLocalItem, ...restaurant.menu];
+      showToast(`Đã thêm món mới "${itemName}" thành công!`);
+    } else {
+      updatedMenu = restaurant.menu.map(m => {
+        if (m.id === itemId) {
+          return savedLocalItem;
+        }
+        return m;
+      });
+      showToast(`Đã lưu thay đổi món "${itemName}" thành công!`);
+    }
+
+    // Sync active menu with restaurant context list
+    const updatedRestaurants = allRestaurants.map(r => {
+      if (r.id === restaurant.id) {
+        // If the broad tags "categories" array doesn't list the category, append it
+        const currentTags = r.categories.includes(selectedCategoryName) 
+          ? r.categories 
+          : [...r.categories, selectedCategoryName];
+        return { ...r, menu: updatedMenu, categories: currentTags };
+      }
+      return r;
+    });
+
+    setRestaurants(updatedRestaurants);
+    setActiveItem(null);
+    setSelectedItemFile(null);
   };
 
-  const handleDeleteMenuItem = async (itemId: string, name: string) => {
+  const handleDeleteMenuItem = (itemId: string, name: string) => {
     if (!confirm(`Bạn muốn xóa món "${name}" khỏi bếp?`)) return;
 
-    setIsLoading(true);
-    try {
-      await deleteMenuItemInBackend(itemId);
-      
-      const updatedMenu = restaurant.menu.filter(m => m.id !== itemId);
-      const updatedRestaurants = allRestaurants.map(r => {
-        if (r.id === restaurant.id) {
-          return { ...r, menu: updatedMenu };
-        }
-        return r;
-      });
+    // Remove file if any
+    setItemFiles(prev => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
 
-      setRestaurants(updatedRestaurants);
-      showToast(`Đã gỡ bỏ "${name}" khỏi bếp.`);
-    } catch {
-      showToast('Lỗi khi xóa món ăn.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
+    const updatedMenu = restaurant.menu.filter(m => m.id !== itemId);
+    const updatedRestaurants = allRestaurants.map(r => {
+      if (r.id === restaurant.id) {
+        return { ...r, menu: updatedMenu };
+      }
+      return r;
+    });
+
+    setRestaurants(updatedRestaurants);
+    showToast(`Đã gỡ bỏ "${name}" khỏi bếp.`);
   };
 
   return (
@@ -770,7 +832,7 @@ export default function MenuManagementModal({
                     </h4>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-gray-450 uppercase">Tên món ăn *</label>
+                      <label className="text-[10px] font-black text-gray-455 uppercase">Tên món ăn *</label>
                       <input
                         type="text"
                         required
@@ -808,7 +870,7 @@ export default function MenuManagementModal({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-gray-450 uppercase">Mô tả tóm tắt món ăn</label>
+                      <label className="text-[10px] font-black text-gray-455 uppercase">Mô tả tóm tắt món ăn</label>
                       <textarea
                         value={itemDesc}
                         onChange={(e) => setItemDesc(e.target.value)}
@@ -818,26 +880,91 @@ export default function MenuManagementModal({
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[10px] font-black text-gray-450 uppercase">Đường dẫn ảnh (URL)</label>
-                        <input
-                          type="text"
-                          value={itemImageUrl}
-                          onChange={(e) => setItemImageUrl(e.target.value)}
-                          placeholder="https://..."
-                          className="w-full bg-white border border-gray-200 rounded-lg p-2.5 font-mono text-xs text-gray-600"
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-455 uppercase">Tải ảnh món ăn</label>
+                      <div 
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) {
+                            if (!file.type.startsWith('image/')) {
+                              showToast('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!', 'error');
+                              return;
+                            }
+                            if (file.size > 10485760) {
+                              showToast('Kích thước tệp tin không được vượt quá 10MB (10,485,760 bytes)!', 'error');
+                              return;
+                            }
+                            setSelectedItemFile(file);
+                            const localPreview = URL.createObjectURL(file);
+                            setItemPreviewUrl(localPreview);
+                          }
+                        }}
+                        className="border border-dashed border-gray-200 hover:border-orange-500 rounded-xl p-4 text-center cursor-pointer bg-gray-50/50 hover:bg-orange-50/5 transition-all relative group flex flex-col items-center justify-center min-h-[110px]"
+                        onClick={() => {
+                          document.getElementById('menu-item-file-input')?.click();
+                        }}
+                      >
+                        <input 
+                          id="menu-item-file-input"
+                          type="file" 
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (!file.type.startsWith('image/')) {
+                                showToast('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!', 'error');
+                                return;
+                              }
+                              if (file.size > 10485760) {
+                                showToast('Kích thước tệp tin không được vượt quá 10MB (10,485,760 bytes)!', 'error');
+                                return;
+                              }
+                              setSelectedItemFile(file);
+                              const localPreview = URL.createObjectURL(file);
+                              setItemPreviewUrl(localPreview);
+                            }
+                          }}
                         />
+                        
+                        {itemPreviewUrl ? (
+                          <div className="relative w-full h-24 rounded-lg overflow-hidden shadow-inner group/preview border border-gray-200 animate-fade-in">
+                            <img 
+                              src={itemPreviewUrl} 
+                              alt="Item Preview" 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover group-hover/preview:scale-102 transition-all duration-350"
+                            />
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/preview:opacity-100 transition-opacity">
+                              <p className="text-[9px] text-white font-black uppercase tracking-wider bg-orange-600 px-2 py-1 rounded-md shadow-md animate-scale-up">Chọn ảnh khác</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="w-8 h-8 bg-orange-100/60 text-orange-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-105 transition-transform">
+                              <Image className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-gray-700">Kéo & thả ảnh vào đây hoặc nhấp để chọn</p>
+                              <p className="text-[8px] text-gray-405">Hỗ trợ JPEG, PNG, WEBP, GIF</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-450 uppercase">Số Order</label>
-                        <input
-                          type="number"
-                          value={itemDisplayOrder}
-                          onChange={(e) => setItemDisplayOrder(Number(e.target.value))}
-                          className="w-full bg-white border border-gray-200 rounded-lg p-2.5 font-mono font-bold"
-                        />
-                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-455 uppercase">Số Order (Thứ tự hiển thị)</label>
+                      <input
+                        type="number"
+                        value={itemDisplayOrder}
+                        onChange={(e) => setItemDisplayOrder(Number(e.target.value))}
+                        className="w-full bg-white border border-gray-200 rounded-lg p-2.5 font-mono font-bold text-gray-900 focus:ring-1 focus:ring-orange-500 outline-none"
+                      />
                     </div>
 
                     <div className="flex flex-wrap gap-4 pt-1">
