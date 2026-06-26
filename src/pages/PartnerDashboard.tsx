@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { AppContextType, Restaurant, MenuItem, Order, OrderStatus } from '../types';
-import { Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2, ListOrdered } from 'lucide-react';
+import { Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2, ListOrdered, Loader2, Tags } from 'lucide-react';
 import StoreStatusToggle from '../components/partner/StoreStatusToggle';
 import MenuManagementModal from '../components/partner/MenuManagementModal';
+import {
+  getMenuInitialForRestaurant,
+  getMenuItemsByCategory,
+  CategoriesResponseDTO,
+  MenuItemResponseDTO
+} from '../api';
 
 export default function PartnerDashboard() {
   const {
@@ -41,9 +47,87 @@ export default function PartnerDashboard() {
 
   // Modal open status for detailed master detail menu
   const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
+  const [menuCategories, setMenuCategories] = useState<CategoriesResponseDTO[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [categoryMenuItems, setCategoryMenuItems] = useState<MenuItemResponseDTO[]>([]);
+  const [isMenuLoading, setIsMenuLoading] = useState(false);
+  const [menuError, setMenuError] = useState('');
 
   const activeRes = restaurants.find(r => r.id === selectedResId);
   const activeResOrders = orders.filter(o => o.restaurantId === selectedResId);
+
+  const formatMoney = (value: number | string | null | undefined) => {
+    const numericValue = Number(value || 0);
+    return numericValue.toLocaleString('vi-VN');
+  };
+
+  const getOptionGroups = (item: MenuItemResponseDTO) => {
+    return (item.options || []).reduce<Record<string, string[]>>((groups, option) => {
+      const groupName = option.groupName || 'Tuy chon';
+      groups[groupName] = [...(groups[groupName] || []), option.optionName];
+      return groups;
+    }, {});
+  };
+
+  useEffect(() => {
+    if (!selectedResId) {
+      setMenuCategories([]);
+      setSelectedCategoryId('');
+      setCategoryMenuItems([]);
+      return;
+    }
+
+    let isCancelled = false;
+    const loadInitialMenu = async () => {
+      setIsMenuLoading(true);
+      setMenuError('');
+      try {
+        const result = await getMenuInitialForRestaurant(selectedResId);
+        if (isCancelled) return;
+
+        const sortedCategories = [...result.categories].sort(
+          (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)
+        );
+        const firstCategory = sortedCategories[0];
+        setMenuCategories(sortedCategories);
+        setSelectedCategoryId(firstCategory?.id || '');
+        setCategoryMenuItems(result.firstCategoryItems);
+      } catch (err) {
+        console.error('Failed to load partner menu initial data:', err);
+        if (!isCancelled) {
+          setMenuCategories([]);
+          setSelectedCategoryId('');
+          setCategoryMenuItems([]);
+          setMenuError('Khong tai duoc thuc don tu may chu.');
+        }
+      } finally {
+        if (!isCancelled) setIsMenuLoading(false);
+      }
+    };
+
+    loadInitialMenu();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedResId]);
+
+  const handleSelectCategory = async (categoryId: string) => {
+    if (categoryId === selectedCategoryId) return;
+
+    setSelectedCategoryId(categoryId);
+    setIsMenuLoading(true);
+    setMenuError('');
+    try {
+      const items = await getMenuItemsByCategory(categoryId);
+      setCategoryMenuItems(items);
+    } catch (err) {
+      console.error('Failed to load menu items by category:', err);
+      setCategoryMenuItems([]);
+      setMenuError('Khong tai duoc danh sach mon cua danh muc nay.');
+    } finally {
+      setIsMenuLoading(false);
+    }
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen py-8 font-sans">
@@ -212,49 +296,140 @@ export default function PartnerDashboard() {
                   )}
                 </div>
 
-                {/* Simple Summary Quick-look list of current active menu items */}
+                {/* API driven category and menu item preview */}
                 <div className="bg-white rounded-2xl border border-gray-150 p-6 shadow-xs">
-                  <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4 bg-white shrink-0">
-                    <h3 className="font-bold text-sm text-gray-920 uppercase tracking-widest text-left">
-                      Khảo sát Thực đơn ({activeRes.menu.length} món)
-                    </h3>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-4 border-b border-gray-100 mb-4 bg-white shrink-0">
+                    <div className="text-left">
+                      <h3 className="font-bold text-sm text-gray-920 uppercase tracking-widest flex items-center gap-2">
+                        <Tags className="w-4 h-4 text-orange-600" />
+                        <span>Thuc don theo danh muc ({categoryMenuItems.length} mon)</span>
+                      </h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                        Tai tu /menu/restaurants/{activeRes.id}/initial va /menu/categories/{selectedCategoryId || 'categoryId'}/menu-items
+                      </p>
+                    </div>
                     <button
                       onClick={() => setIsMenuModalOpen(true)}
                       className="px-3.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer"
                     >
-                      Bấm để tinh chỉnh chi tiết
+                      Bam de tinh chinh chi tiet
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {activeRes.menu.slice(0, 6).map((food) => (
-                      <div key={food.id} className="flex justify-between items-center p-3.5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:border-gray-150 transition-all text-left">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={food.imageUrl}
-                            alt={food.name}
-                            className="w-10 h-10 rounded-xl object-cover shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <p className="font-bold text-xs text-gray-900 truncate">{food.name}</p>
-                            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider truncate mt-0.5">{food.category}</p>
-                          </div>
-                        </div>
+                  {menuError && (
+                    <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-left">
+                      <p className="text-xs font-bold text-red-700">{menuError}</p>
+                    </div>
+                  )}
 
-                        <span className="font-mono font-bold text-xs text-gray-900 shrink-0">
-                          {food.price.toLocaleString('vi-VN')} đ
-                        </span>
+                  <div className="flex gap-2 overflow-x-auto pb-3 mb-4">
+                    {menuCategories.length === 0 && !isMenuLoading ? (
+                      <div className="w-full rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center">
+                        <p className="text-xs font-bold text-gray-400">Chua co danh muc nao duoc tra ve tu backend.</p>
                       </div>
-                    ))}
+                    ) : (
+                      menuCategories.map((category) => {
+                        const isSelected = category.id === selectedCategoryId;
+                        return (
+                          <button
+                            key={category.id}
+                            onClick={() => handleSelectCategory(category.id)}
+                            className={`shrink-0 rounded-xl border px-4 py-2 text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-xs'
+                                : 'border-gray-150 bg-white text-gray-600 hover:border-orange-200 hover:bg-orange-50/40'
+                            }`}
+                          >
+                            <span className="block text-xs font-black uppercase tracking-wide">{category.name}</span>
+                            <span className="block text-[10px] font-bold text-gray-400 mt-0.5">
+                              Order #{category.displayOrder ?? 0}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
 
-                  {activeRes.menu.length > 6 && (
+                  {isMenuLoading ? (
+                    <div className="flex items-center justify-center py-12 text-orange-600">
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      <span className="text-xs font-black uppercase tracking-wider">Dang tai thuc don...</span>
+                    </div>
+                  ) : categoryMenuItems.length === 0 ? (
+                    <div className="text-center py-10 rounded-2xl bg-gray-50 border border-gray-100">
+                      <p className="text-gray-400 font-semibold text-xs">Danh muc nay chua co mon an nao.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {categoryMenuItems
+                        .slice()
+                        .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+                        .map((food) => {
+                          const optionGroups = getOptionGroups(food);
+                          return (
+                            <div key={food.id} className="p-3.5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:border-gray-150 transition-all text-left">
+                              <div className="flex justify-between items-start gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <img
+                                    src={food.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80'}
+                                    alt={food.name}
+                                    className="w-12 h-12 rounded-xl object-cover shrink-0 bg-gray-100"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <p className="font-bold text-xs text-gray-900 truncate">{food.name}</p>
+                                      {food.isFeatured && (
+                                        <span className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[9px] font-black text-orange-700">HOT</span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 font-medium line-clamp-2 mt-0.5">{food.description || 'Chua co mo ta'}</p>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  <span className="font-mono font-bold text-xs text-gray-900 block">
+                                    {formatMoney(food.price)} d
+                                  </span>
+                                  {food.originalPrice && (
+                                    <span className="font-mono text-[10px] text-gray-400 line-through">
+                                      {formatMoney(food.originalPrice)} d
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <span className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${
+                                  food.isAvailable === false
+                                    ? 'bg-red-50 text-red-600'
+                                    : 'bg-emerald-50 text-emerald-700'
+                                }`}>
+                                  {food.isAvailable === false ? 'Tam het mon' : 'Dang ban'}
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-400">Order #{food.displayOrder ?? 0}</span>
+                              </div>
+
+                              {Object.keys(optionGroups).length > 0 && (
+                                <div className="mt-3 border-t border-gray-100 pt-2 space-y-1">
+                                  {Object.entries(optionGroups).map(([groupName, optionNames]) => (
+                                    <p key={groupName} className="text-[10px] text-gray-500">
+                                      <b className="text-gray-700">{groupName}:</b> {optionNames.join(', ')}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {menuCategories.length > 0 && (
                     <p className="text-center text-[10px] text-gray-400 font-bold mt-4">
-                      Và {activeRes.menu.length - 6} món ngon ẩm thực khác. Bấm vào nút Quản lý Thực đơn để xem đầy đủ.
+                      Bam vao tung danh muc de tai danh sach mon cua category do tu backend.
                     </p>
                   )}
                 </div>
-
               </div>
 
             </div>

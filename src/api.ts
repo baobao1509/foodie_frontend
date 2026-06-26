@@ -34,7 +34,15 @@ export {
   deleteCategoryInBackend,
   createMenuItemInBackend,
   deleteMenuItemInBackend,
-  submitFullMenuToBackend
+  submitFullMenuToBackend,
+  getMenuInitialForRestaurant,
+  getMenuItemsByCategory
+} from './services/categoryService';
+
+export type {
+  CategoriesResponseDTO,
+  MenuItemResponseDTO,
+  MenuItemOptionResponseDTO
 } from './services/categoryService';
 
 // Re-export Order operations

@@ -27,6 +27,69 @@ export interface MenuItemRequestDTO {
   options: MenuItemOptionRequestDTO[];
 }
 
+export interface MenuItemOptionResponseDTO {
+  id?: string;
+  groupName: string;
+  optionName: string;
+  extraPrice?: number | string;
+  isDefault?: boolean;
+}
+
+export interface MenuItemResponseDTO {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  price: number | string;
+  originalPrice?: number | string | null;
+  isAvailable?: boolean;
+  isFeatured?: boolean;
+  displayOrder?: number;
+  options?: MenuItemOptionResponseDTO[];
+}
+
+export interface CategoriesResponseDTO {
+  id: string;
+  name: string;
+  displayOrder?: number;
+  items?: MenuItemResponseDTO[];
+}
+
+export interface MenuInitialResponseDTO {
+  categories: CategoriesResponseDTO[];
+  firstCategoryItems: {
+    content?: MenuItemResponseDTO[];
+    data?: MenuItemResponseDTO[];
+    totalElements?: number;
+    totalPages?: number;
+    number?: number;
+    size?: number;
+  } | MenuItemResponseDTO[];
+}
+
+const extractMenuItems = (raw: MenuInitialResponseDTO['firstCategoryItems'] | any): MenuItemResponseDTO[] => {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.content)) return raw.content;
+  if (Array.isArray(raw?.data)) return raw.data;
+  return [];
+};
+
+export const getMenuInitialForRestaurant = async (restaurantId: string): Promise<{
+  categories: CategoriesResponseDTO[];
+  firstCategoryItems: MenuItemResponseDTO[];
+}> => {
+  const res = await api.get<MenuInitialResponseDTO>(`/menu/restaurants/${restaurantId}/initial`);
+  return {
+    categories: Array.isArray(res.data?.categories) ? res.data.categories : [],
+    firstCategoryItems: extractMenuItems(res.data?.firstCategoryItems)
+  };
+};
+
+export const getMenuItemsByCategory = async (categoryId: string): Promise<MenuItemResponseDTO[]> => {
+  const res = await api.get(`/menu/categories/${categoryId}/menu-items`);
+  return extractMenuItems(res.data);
+};
+
 export const createCategoryInBackend = async (payload: CategoriesRequestDTO): Promise<any> => {
   try {
     const res = await api.post('/admin/categories', payload);
