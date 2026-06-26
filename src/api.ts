@@ -33,8 +33,9 @@ export {
   createCategoryInBackend,
   deleteCategoryInBackend,
   createMenuItemInBackend,
-  deleteMenuItemInBackend
-} from './services/menuService';
+  deleteMenuItemInBackend,
+  submitFullMenuToBackend
+} from './services/categoryService';
 
 // Re-export Order operations
 export { getOrders } from './services/orderService';

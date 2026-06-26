@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
+import axios from 'axios';
 import { AppContextType, Restaurant, UserRole } from '../types';
-import { createRestaurant as apiCreateRestaurant } from '../api';
+import { createRestaurant as apiCreateRestaurant, api } from '../api';
 import { 
   Store, MapPin, Clock, Coins, Phone, Mail, Link, FileText, 
   CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Loader2, Image
@@ -13,6 +14,22 @@ const PRESET_COVERS = [
   { url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=600&q=80', name: 'Pizza & Pasta Ý' },
   { url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80', name: 'Tiệm Bánh & Tráng miệng' },
 ];
+
+// Helper functions to calculate SHA-256 hash of a file on client-side
+async function calculateFileSHA256Hex(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function calculateFileSHA256Base64(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const binaryString = hashArray.map(b => String.fromCharCode(b)).join('');
+  return btoa(binaryString);
+}
 
 export default function RegisterRestaurantPage() {
   const navigate = useNavigate();
@@ -38,7 +55,9 @@ export default function RegisterRestaurantPage() {
   const [closingTime, setClosingTime] = useState('22:00');
   const [minOrderValue, setMinOrderValue] = useState('0');
   const [deliveryFee, setDeliveryFee] = useState('15000');
-  const [coverImageUrl, setCoverImageUrl] = useState(PRESET_COVERS[0].url);
+  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
   const [payosAccountId, setPayosAccountId] = useState('');
 
   // Interaction States
@@ -255,6 +274,16 @@ export default function RegisterRestaurantPage() {
       setIsSubmitting(false);
       return;
     }
+    if (!selectedFile) {
+      setErrorMessage('Vui lòng chọn hoặc tải lên tệp tin ảnh bìa nhà hàng!');
+      setIsSubmitting(false);
+      return;
+    }
+    if (selectedFile.size > 10485760) {
+      setErrorMessage('Kích thước ảnh bìa vượt quá giới hạn cho phép (10MB)!');
+      setIsSubmitting(false);
+      return;
+    }
     if (!payosAccountId.trim()) {
       setErrorMessage('Tài khoản PayOS không được trống!');
       setIsSubmitting(false);
@@ -262,6 +291,41 @@ export default function RegisterRestaurantPage() {
     }
 
     try {
+      // Step A: Request AWS S3 Presigned URL from Backend
+      // Calculate SHA-256 hash on client-side
+      const sha256Base64 = await calculateFileSHA256Base64(selectedFile);
+
+      // GET /api/v1/upload/presign with query params folder, fileName, contentType, fileSize, checksum
+      const presignRes = await api.get('/upload/presign', {
+        params: {
+          folder: 'restaurant-cover-images',
+          fileName: selectedFile.name,
+          contentType: selectedFile.type,
+          fileSize: selectedFile.size, // Pass fileSize to backend so it can double check
+          checksum: sha256Base64, // Must be SHA-256 Base64 format for AWS S3 SDK v2 .checksumSHA256()
+        }
+      });
+
+      const responseData = presignRes.data;
+      const dataObj = responseData?.data || responseData;
+      const presignedUrl = dataObj?.presignedUrl || dataObj?.url || dataObj?.presigned_url;
+      const imageURL = dataObj?.imageURL || dataObj?.key || dataObj?.s3_key;
+
+      if (!presignedUrl || !imageURL) {
+        throw new Error('Không thể nhận liên kết tải ảnh lên (S3 Presigned URL) từ server. Vui lòng thử lại!');
+      }
+
+      // Step B: Raw PUT request to AWS S3
+      // We must use a clean axios PUT call without any default auth headers or withCredentials options that might taint the AWS signature.
+      await axios.put(presignedUrl, selectedFile, {
+        headers: {
+          'Content-Type': selectedFile.type,
+          'x-amz-checksum-sha256': sha256Base64, // Standard S3 SHA-256 checksum validation header
+          'x-amz-sdk-checksum-algorithm': 'SHA256' // Required to match the AWS SDK v2 presigner's signed headers
+        }
+      });
+
+      // Step C: Send metadata + S3 key (stored in place of coverImageUrl) to register endpoint
       const payload = {
         name: name.trim(),
         slug: slug.trim() || undefined,
@@ -278,7 +342,7 @@ export default function RegisterRestaurantPage() {
         closingTime: closingTime ? closingTime + ':00' : undefined,
         minOrderValue: parseFloat(minOrderValue) || 0,
         deliveryFee: parseFloat(deliveryFee) || 0,
-        coverImageUrl: coverImageUrl,
+        coverImageUrl: imageURL, // Changed coverImageUrl to imageURL as requested
         payosAccountId: payosAccountId.trim(),
       };
 
@@ -311,7 +375,7 @@ export default function RegisterRestaurantPage() {
     } catch (err: any) {
       console.error(err);
       const serverMsg = err.response?.data?.message;
-      setErrorMessage(serverMsg || err.message || 'Lỗi gửi gói dữ liệu RestaurantRequestDTO lên Spring Boot backend.');
+      setErrorMessage(serverMsg || err.message || 'Lỗi gửi gói dữ liệu hoặc tải ảnh sên S3.');
     } finally {
       setIsSubmitting(false);
     }
@@ -678,55 +742,84 @@ export default function RegisterRestaurantPage() {
             <div className="pt-4 border-t border-gray-100">
               <h3 className="text-xs font-bold text-orange-600 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Image className="w-4 h-4" />
-                <span>5. Ảnh bìa giao diện nhà hàng</span>
+                <span>5. Tải ảnh bìa đại diện nhà hàng</span>
               </h3>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    URL hình ảnh đại diện / Banner món ngon
-                  </label>
-                  <input
-                    type="url"
-                    max={500}
-                    value={coverImageUrl}
-                    onChange={(e) => setCoverImageUrl(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-xs font-mono text-gray-700 outline-hidden focus:ring-2 focus:ring-orange-500/10"
+                <div 
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      if (!file.type.startsWith('image/')) {
+                        setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
+                        return;
+                      }
+                      if (file.size > 10485760) {
+                        setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
+                        return;
+                      }
+                      setSelectedFile(file);
+                      const localPreview = URL.createObjectURL(file);
+                      setPreviewUrl(localPreview);
+                      setErrorMessage('');
+                    }
+                  }}
+                  className="border-2 border-dashed border-gray-200 hover:border-orange-500 rounded-2xl p-6 text-center cursor-pointer bg-gray-50/50 hover:bg-orange-50/5 transition-all relative group flex flex-col items-center justify-center min-h-[160px]"
+                  onClick={() => {
+                    document.getElementById('cover-file-input')?.click();
+                  }}
+                >
+                  <input 
+                    id="cover-file-input"
+                    type="file" 
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (!file.type.startsWith('image/')) {
+                          setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
+                          return;
+                        }
+                        if (file.size > 10485760) {
+                          setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
+                          return;
+                        }
+                        setSelectedFile(file);
+                        const localPreview = URL.createObjectURL(file);
+                        setPreviewUrl(localPreview);
+                        setErrorMessage('');
+                      }
+                    }}
                   />
-                </div>
-
-                <div>
-                  <p className="text-[11px] font-bold text-gray-400 mb-2 uppercase">Chọn nhanh từ kho ảnh gợi ý:</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {PRESET_COVERS.map((preset) => {
-                      const isSelected = coverImageUrl === preset.url;
-                      return (
-                        <button
-                          key={preset.url}
-                          type="button"
-                          onClick={() => setCoverImageUrl(preset.url)}
-                          className={`group relative h-20 rounded-xl overflow-hidden border-2 transition-all text-left ${
-                            isSelected ? 'border-orange-500 scale-95 shadow-md' : 'border-transparent opacity-80 hover:opacity-100'
-                          }`}
-                        >
-                          <img
-                            src={preset.url}
-                            alt={preset.name}
-                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
-                          />
-                          <div className="absolute inset-x-0 bottom-0 bg-black/50 p-2 text-[9px] font-bold text-white truncate">
-                            {preset.name}
-                          </div>
-                          {isSelected && (
-                            <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-orange-600 text-white rounded-full flex items-center justify-center text-[8px] font-black">
-                              ✓
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  
+                  {previewUrl ? (
+                    <div className="relative w-full max-w-md h-40 rounded-xl overflow-hidden shadow-inner group/preview border border-gray-200">
+                      <img 
+                        src={previewUrl} 
+                        alt="Cover Preview" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover group-hover/preview:scale-102 transition-all duration-350"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/preview:opacity-100 transition-opacity">
+                        <p className="text-[10px] text-white font-black uppercase tracking-wider bg-orange-600 px-3 py-1.5 rounded-lg shadow-md">Chọn ảnh khác</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-12 h-12 bg-orange-100/60 text-orange-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                        <Image className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-gray-700">Kéo & thả ảnh đại diện vào đây hoặc nhấp để chọn tệp</p>
+                        <p className="text-[10px] text-gray-400 mt-1">Yêu cầu tệp ảnh (JPEG, PNG, WEBP, GIF,...) dưới 10MB</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
