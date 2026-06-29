@@ -4,12 +4,15 @@ import { AppContextType, Restaurant, MenuItem, Order, OrderStatus } from '../typ
 import { Trash2, Edit2, Plus, Percent, Store, CreditCard, ChevronRight, CheckCircle2, ListOrdered, Loader2, Tags } from 'lucide-react';
 import StoreStatusToggle from '../components/partner/StoreStatusToggle';
 import MenuManagementModal from '../components/partner/MenuManagementModal';
+import CategoryEditModal from '../components/partner/CategoryEditModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   getMenuInitialForRestaurant,
   getMenuItemsByCategory,
   CategoriesResponseDTO,
   MenuItemResponseDTO,
-  getMyRestaurant
+  getMyRestaurant,
+  deleteCategoryInBackend
 } from '../api';
 
 export default function PartnerDashboard() {
@@ -103,11 +106,62 @@ export default function PartnerDashboard() {
 
   // Modal open status for detailed master detail menu
   const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
+  const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
   const [menuCategories, setMenuCategories] = useState<CategoriesResponseDTO[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [categoryMenuItems, setCategoryMenuItems] = useState<MenuItemResponseDTO[]>([]);
   const [isMenuLoading, setIsMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState('');
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+
+  const handleDeleteCategory = async () => {
+    if (!selectedCategoryId) return;
+    setIsDeletingCategory(true);
+    setMenuError('');
+    try {
+      await deleteCategoryInBackend(selectedCategoryId);
+      setIsDeleteConfirmOpen(false);
+      // Refresh the menu, resetting selectedCategoryId
+      await handleRefreshMenu('');
+    } catch (err: any) {
+      console.error('Lỗi xoá danh mục:', err);
+      setMenuError(err.response?.data?.message || 'Không thể xoá danh mục vĩnh viễn lúc này. Vui lòng thử lại sau.');
+      setIsDeleteConfirmOpen(false);
+    } finally {
+      setIsDeletingCategory(false);
+    }
+  };
+
+  const handleRefreshMenu = async (currentCategoryId?: string) => {
+    if (!selectedResId) return;
+    setIsMenuLoading(true);
+    setMenuError('');
+    try {
+      const result = await getMenuInitialForRestaurant(selectedResId);
+      const sortedCategories = [...result.categories].sort(
+        (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)
+      );
+      setMenuCategories(sortedCategories);
+      
+      const targetCatId = currentCategoryId || selectedCategoryId || sortedCategories[0]?.id || '';
+      const finalCat = sortedCategories.find(c => c.id === targetCatId) || sortedCategories[0];
+      
+      if (finalCat?.id) {
+        setSelectedCategoryId(finalCat.id);
+        const items = await getMenuItemsByCategory(finalCat.id);
+        setCategoryMenuItems(items);
+      } else {
+        setSelectedCategoryId('');
+        setCategoryMenuItems([]);
+      }
+    } catch (err) {
+      console.error('Failed to reload menu:', err);
+      setMenuError('Khong tai duoc thuc don moi nhat tu may chu.');
+    } finally {
+      setIsMenuLoading(false);
+    }
+  };
 
   const activeRes = myRestaurant;
   const activeResOrders = orders.filter(o => o.restaurantId === selectedResId);
@@ -387,31 +441,55 @@ export default function PartnerDashboard() {
                     </div>
                   )}
 
-                  <div className="flex gap-2 overflow-x-auto pb-3 mb-4">
-                    {menuCategories.length === 0 && !isMenuLoading ? (
-                      <div className="w-full rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center">
-                        <p className="text-xs font-bold text-gray-400">Chua co danh muc nao duoc tra ve tu backend.</p>
+                  <div className="flex items-center gap-3 mb-4 bg-gray-55 p-1.5 rounded-2xl border border-gray-100">
+                    <div className="flex-1 flex gap-2 overflow-x-auto pb-1.5 min-w-0">
+                      {menuCategories.length === 0 && !isMenuLoading ? (
+                        <div className="w-full rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center">
+                          <p className="text-xs font-bold text-gray-400">Chua co danh muc nao duoc tra ve tu backend.</p>
+                        </div>
+                      ) : (
+                        menuCategories.map((category) => {
+                          const isSelected = category.id === selectedCategoryId;
+                          return (
+                            <button
+                              key={category.id}
+                              onClick={() => handleSelectCategory(category.id)}
+                              className={`shrink-0 rounded-xl border px-4 py-2 text-left transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-xs font-black'
+                                  : 'border-gray-150 bg-white text-gray-600 hover:border-orange-200 hover:bg-orange-50/40 font-semibold'
+                              }`}
+                            >
+                              <span className="block text-xs uppercase tracking-wide">{category.name}</span>
+                              <span className="block text-[10px] text-gray-400 mt-0.5 font-normal">
+                                Order #{category.displayOrder ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {selectedCategoryId && (
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => setIsEditCategoryModalOpen(true)}
+                          className="shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-orange-900/10 transition-all cursor-pointer active:scale-95"
+                          title="Chỉnh sửa chi tiết danh mục, món ăn, và toppings này"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Chỉnh sửa</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          className="shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-150 rounded-xl text-xs font-black uppercase tracking-wider shadow-xs transition-all cursor-pointer active:scale-95"
+                          title="Xóa danh mục này và toàn bộ món ăn bên trong"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa</span>
+                        </button>
                       </div>
-                    ) : (
-                      menuCategories.map((category) => {
-                        const isSelected = category.id === selectedCategoryId;
-                        return (
-                          <button
-                            key={category.id}
-                            onClick={() => handleSelectCategory(category.id)}
-                            className={`shrink-0 rounded-xl border px-4 py-2 text-left transition-all cursor-pointer ${
-                              isSelected
-                                ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-xs'
-                                : 'border-gray-150 bg-white text-gray-600 hover:border-orange-200 hover:bg-orange-50/40'
-                            }`}
-                          >
-                            <span className="block text-xs font-black uppercase tracking-wide">{category.name}</span>
-                            <span className="block text-[10px] font-bold text-gray-400 mt-0.5">
-                              Order #{category.displayOrder ?? 0}
-                            </span>
-                          </button>
-                        );
-                      })
                     )}
                   </div>
 
@@ -507,6 +585,30 @@ export default function PartnerDashboard() {
               setRestaurants={setRestaurants}
               allRestaurants={restaurants}
             />
+
+            {selectedResId && selectedCategoryId && (
+              <CategoryEditModal
+                isOpen={isEditCategoryModalOpen}
+                onClose={() => setIsEditCategoryModalOpen(false)}
+                categoryId={selectedCategoryId}
+                restaurantId={selectedResId}
+                onSaveSuccess={() => handleRefreshMenu(selectedCategoryId)}
+              />
+            )}
+
+            {selectedResId && selectedCategoryId && (
+              <ConfirmDialog
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={handleDeleteCategory}
+                title="Xác nhận xóa danh mục"
+                message={`Bạn có chắc chắn muốn xóa danh mục "${menuCategories.find(c => c.id === selectedCategoryId)?.name || ''}"? Hành động này sẽ xóa vĩnh viễn danh mục này và toàn bộ món ăn bên trong của cửa hàng khỏi hệ thống và không thể hoàn tác.`}
+                confirmText="Xóa vĩnh viễn"
+                cancelText="Hủy bỏ"
+                type="danger"
+                isLoading={isDeletingCategory}
+              />
+            )}
           </>
         ) : (
           <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 p-8 shadow-xs">

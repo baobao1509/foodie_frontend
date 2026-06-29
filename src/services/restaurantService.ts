@@ -94,7 +94,7 @@ export const getMyRestaurant = async (): Promise<any> => {
 export const createRestaurant = async (payload: any): Promise<any> => {
   try {
     // Thử gọi qua URL config của Nginx reverse-proxy trước
-    const res = await api.post('/restaurants/me', payload);
+    const res = await api.post('/restaurants/me/insert', payload);
     return res.data;
   } catch (err) {
     console.warn('[RestaurantService] Failed with POST /restaurants/me, trying fallback /restaurant:', err);

@@ -308,7 +308,7 @@ export default function RegisterRestaurantPage() {
       setIsSubmitting(false);
       return;
     }
-    if (selectedFile.size > 10485760) {
+    if (selectedFile.size > 50485760) {
       setErrorMessage('Kích thước ảnh bìa vượt quá giới hạn cho phép (10MB)!');
       setIsSubmitting(false);
       return;
@@ -327,7 +327,7 @@ export default function RegisterRestaurantPage() {
       // GET /api/v1/upload/presign with query params folder, fileName, contentType, fileSize, checksum
       const presignRes = await api.get('/upload/presign', {
         params: {
-          folder: 'restaurants',
+          folder: 'restaurant-cover-images',
           fileName: selectedFile.name,
           contentType: selectedFile.type,
           fileSize: selectedFile.size, // Pass fileSize to backend so it can double check
@@ -787,7 +787,7 @@ export default function RegisterRestaurantPage() {
                         setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
                         return;
                       }
-                      if (file.size > 10485760) {
+                      if (file.size > 50485760) {
                         setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
                         return;
                       }
@@ -814,7 +814,7 @@ export default function RegisterRestaurantPage() {
                           setErrorMessage('Chỉ chấp nhận các tệp tin có định dạng hình ảnh!');
                           return;
                         }
-                        if (file.size > 10485760) {
+                        if (file.size > 50485760) {
                           setErrorMessage('Kích thước ảnh bìa không được vượt quá 10MB!');
                           return;
                         }

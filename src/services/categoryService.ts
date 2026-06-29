@@ -106,23 +106,8 @@ export const createCategoryInBackend = async (payload: CategoriesRequestDTO): Pr
 };
 
 export const deleteCategoryInBackend = async (categoryId: string): Promise<any> => {
-  try {
-    const res = await api.delete(`/menu/categories/${categoryId}`);
-    return res.data;
-  } catch (err) {
-    console.warn('[MenuService] DELETE /menu/categories failed, falling back:', err);
-    try {
-      const res = await api.delete(`/admin/categories/${categoryId}`);
-      return res.data;
-    } catch {
-      try {
-        const res = await api.delete(`/categories/${categoryId}`);
-        return res.data;
-      } catch {
-        return { success: true };
-      }
-    }
-  }
+  const res = await api.delete(`/menu/categories/${categoryId}`);
+  return res.data;
 };
 
 export const createMenuItemInBackend = async (payload: MenuItemRequestDTO): Promise<any> => {
@@ -141,23 +126,8 @@ export const createMenuItemInBackend = async (payload: MenuItemRequestDTO): Prom
 };
 
 export const deleteMenuItemInBackend = async (menuItemId: string): Promise<any> => {
-  try {
-    const res = await api.delete(`/menu/menu-items/${menuItemId}`);
-    return res.data;
-  } catch (err) {
-    console.warn('[MenuService] DELETE /menu/menu-items failed, falling back:', err);
-    try {
-      const res = await api.delete(`/admin/menu-items/${menuItemId}`);
-      return res.data;
-    } catch {
-      try {
-        const res = await api.delete(`/menu-items/${menuItemId}`);
-        return res.data;
-      } catch {
-        return { success: true };
-      }
-    }
-  }
+  const res = await api.delete(`/menu/menu-items/${menuItemId}`);
+  return res.data;
 };
 
 export const getCategoryForEdit = async (categoryId: string): Promise<CategoriesResponseDTO> => {
