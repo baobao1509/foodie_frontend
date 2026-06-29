@@ -79,7 +79,7 @@ export interface Order {
 
 export enum UserRole {
   CUSTOMER = 'CUSTOMER',
-  PARTNER = 'PARTNER',
+  RESTAURANT = 'RESTAURANT',
   ADMIN = 'ADMIN'
 }
 

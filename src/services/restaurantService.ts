@@ -86,6 +86,11 @@ export const getRestaurants = async (): Promise<any[]> => {
   }
 };
 
+export const getMyRestaurant = async (): Promise<any> => {
+  const res = await api.get('/restaurants/me');
+  return mapBackendRestaurant(res.data);
+};
+
 export const createRestaurant = async (payload: any): Promise<any> => {
   try {
     // Thử gọi qua URL config của Nginx reverse-proxy trước

@@ -40,7 +40,7 @@ export default function LoginPage() {
           // Redirect smart based on role
           if (userData.role === UserRole.ADMIN) {
             navigate('/admin');
-          } else if (userData.role === UserRole.PARTNER) {
+          } else if (userData.role === UserRole.RESTAURANT) {
             navigate('/partner');
           } else {
             navigate('/');

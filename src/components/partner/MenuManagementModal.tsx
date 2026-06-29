@@ -7,7 +7,9 @@ import {
   createMenuItemInBackend, 
   deleteMenuItemInBackend,
   submitFullMenuToBackend,
-  api
+  getMenuInitialForRestaurant,
+  api,
+  CategoriesResponseDTO
 } from '../../api';
 import { 
   X, Plus, Edit2, Trash2, Check, ArrowRight, Save, ToggleLeft, 
@@ -21,6 +23,7 @@ interface MenuManagementModalProps {
   restaurant: Restaurant;
   setRestaurants: (restaurants: Restaurant[]) => void;
   allRestaurants: Restaurant[];
+  initialCategoryId?: string;
 }
 
 interface CategoryDTO {
@@ -57,11 +60,13 @@ export default function MenuManagementModal({
   onClose,
   restaurant,
   setRestaurants,
-  allRestaurants
+  allRestaurants,
+  initialCategoryId
 }: MenuManagementModalProps) {
   // Categories list state representation
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [selectedCatId, setSelectedCatId] = useState<string>('');
+  const [categoryMenuItems, setCategoryMenuItems] = useState<MenuItem[]>([]);
   
   // Create Category forms
   const [newCatName, setNewCatName] = useState('');
@@ -99,6 +104,7 @@ export default function MenuManagementModal({
   // Toast / Status messaging
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadedCatIds, setLoadedCatIds] = useState<string[]>([]);
 
   // States for showing the sent payload preview
   const [showPayloadPreview, setShowPayloadPreview] = useState(false);
@@ -230,9 +236,112 @@ export default function MenuManagementModal({
       setGeneratedPayload(finalPayload);
       setShowPayloadPreview(true);
       showToast('Đã đồng bộ thực đơn dạng DTO lên API thành công!');
+      setLoadedCatIds([]);
+      await loadCategories();
     } catch (err: any) {
       console.error(err);
       showToast(err.message || 'Gửi dữ liệu lên API thất bại.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmitSelectedCategory = async () => {
+    if (!selectedCatId || selectedCatId.startsWith('cat-')) {
+      showToast('Danh mục chưa đồng bộ hoặc không hợp lệ!', 'error');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Filter current items belonging to this category from categoryMenuItems state
+      const itemsForCat = categoryMenuItems;
+
+      // Upload any new files for these items first
+      const resolvedImageUrls: Record<string, string> = {};
+      for (const [itemId, fileObj] of Object.entries(itemFiles)) {
+        const file = fileObj as File;
+        // Check if item belongs to this category
+        const itemBelongs = itemsForCat.some(it => it.id === itemId);
+        if (!itemBelongs) continue;
+
+        try {
+          if (file.size > 10485760) {
+            throw new Error(`Kích thước tệp tin ${file.name} vượt quá giới hạn (10MB)!`);
+          }
+
+          const sha256Base64 = await calculateFileSHA256Base64(file);
+          const presignRes = await api.get('/upload/presign', {
+            params: {
+              folder: 'menu-items',
+              fileName: file.name,
+              contentType: file.type,
+              fileSize: file.size,
+              checksum: sha256Base64,
+            }
+          });
+
+          const { presignedUrl, imageURL } = presignRes.data;
+          if (!presignedUrl || !imageURL) {
+            throw new Error(`Không nhận được link tải lên cho ${file.name}`);
+          }
+
+          await axios.put(presignedUrl, file, {
+            headers: {
+              'Content-Type': file.type,
+              'x-amz-checksum-sha256': sha256Base64,
+              'x-amz-sdk-checksum-algorithm': 'SHA256'
+            }
+          });
+
+          resolvedImageUrls[itemId] = imageURL;
+        } catch (uploadErr: any) {
+          console.error(`Lỗi tải ảnh món ${itemId} lên S3:`, uploadErr);
+          throw new Error(uploadErr.message || `Tải ảnh thất bại: ${file.name}`);
+        }
+      }
+
+      // Map menu items payload
+      const menuItemsPayload = itemsForCat.map((item, index) => {
+        let finalImageUrl = resolvedImageUrls[item.id] || item.imageUrl || '';
+        if (finalImageUrl.startsWith('blob:')) {
+          finalImageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
+        }
+
+        return {
+          id: item.id.startsWith('m-custom-') ? undefined : item.id,
+          name: item.name,
+          description: item.description || '',
+          imageUrl: finalImageUrl,
+          price: item.price,
+          originalPrice: (item as any).originalPrice || null,
+          isAvailable: (item as any).isAvailable !== false,
+          isFeatured: item.isPopular || false,
+          displayOrder: (item as any).displayOrder || (index + 1),
+          options: (item as any).options || []
+        };
+      });
+
+      // Construct request body
+      const payload = {
+        name: selectedCategoryName,
+        displayOrder: selectedCategory?.displayOrder ?? 1,
+        restaurantId: restaurant.id,
+        restaurantid: restaurant.id,
+        menuItems: menuItemsPayload,
+        items: menuItemsPayload
+      };
+
+      // PUT to /menu/categories/{categoryId}
+      await api.put(`/menu/categories/${selectedCatId}`, payload);
+      
+      setGeneratedPayload(payload);
+      setShowPayloadPreview(true);
+      showToast('Đã lưu thay đổi của danh mục hiện tại lên máy chủ thành công!');
+      setLoadedCatIds(prev => prev.filter(id => id !== selectedCatId));
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Cập nhật danh mục lên API thất bại.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -244,35 +353,156 @@ export default function MenuManagementModal({
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Extract initial categories from restaurant menu
-  useEffect(() => {
-    if (restaurant) {
-      const uniqueCats = Array.from(new Set(restaurant.menu.map(m => m.category || 'Món ăn')));
-      const initialCats = uniqueCats.map((cat, index) => {
-        // Try parsing database category sequence mapping
-        return {
-          id: `cat-${index + 1}`,
-          name: cat,
-          displayOrder: index + 1
-        };
-      });
-      setCategories(initialCats);
-      if (initialCats.length > 0) {
-        setSelectedCatId(initialCats[0].id);
-      }
-    }
-  }, [restaurant]);
-
-  if (!isOpen) return null;
-
   // Selected Category representation helper
   const selectedCategory = categories.find(c => c.id === selectedCatId);
   const selectedCategoryName = selectedCategory ? selectedCategory.name : '';
 
-  // Filter food items inside the selected category name
-  const filteredMenuItems = restaurant.menu.filter(
-    item => (item.category || '').toLowerCase() === selectedCategoryName.toLowerCase()
-  );
+  // Extract initial categories from backend or fallback to restaurant menu
+  const loadCategories = async () => {
+    try {
+      const res = await api.get<{ categories: CategoriesResponseDTO[] } | CategoriesResponseDTO[]>(`/menu/restaurants/${restaurant.id}`);
+      let cats: CategoriesResponseDTO[] = [];
+      if (Array.isArray(res.data)) {
+        cats = res.data;
+      } else if (res.data && Array.isArray((res.data as any).categories)) {
+        cats = (res.data as any).categories;
+      } else {
+        const initialRes = await getMenuInitialForRestaurant(restaurant.id);
+        cats = initialRes.categories;
+      }
+      
+      if (cats && cats.length > 0) {
+        setCategories(cats.map(c => ({
+          id: c.id,
+          name: c.name,
+          displayOrder: c.displayOrder ?? 1
+        })));
+        
+        if (initialCategoryId && cats.some(c => c.id === initialCategoryId)) {
+          setSelectedCatId(initialCategoryId);
+        } else if (!selectedCatId || !cats.some(c => c.id === selectedCatId)) {
+          setSelectedCatId(cats[0].id);
+        }
+      } else {
+        // fallback to local if nothing in backend
+        const uniqueCats = Array.from(new Set(restaurant.menu.map(m => m.category || 'Món ăn')));
+        const initialCats = uniqueCats.map((cat, index) => ({
+          id: `cat-${index + 1}`,
+          name: cat,
+          displayOrder: index + 1
+        }));
+        setCategories(initialCats);
+        if (initialCategoryId && initialCats.some(c => c.id === initialCategoryId)) {
+          setSelectedCatId(initialCategoryId);
+        } else if (initialCats.length > 0 && (!selectedCatId || !initialCats.some(c => c.id === selectedCatId))) {
+          setSelectedCatId(initialCats[0].id);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load real categories, falling back:', err);
+      const uniqueCats = Array.from(new Set(restaurant.menu.map(m => m.category || 'Món ăn')));
+      const initialCats = uniqueCats.map((cat, index) => ({
+        id: `cat-${index + 1}`,
+        name: cat,
+        displayOrder: index + 1
+      }));
+      setCategories(initialCats);
+      if (initialCategoryId && initialCats.some(c => c.id === initialCategoryId)) {
+        setSelectedCatId(initialCategoryId);
+      } else if (initialCats.length > 0 && (!selectedCatId || !initialCats.some(c => c.id === selectedCatId))) {
+        setSelectedCatId(initialCats[0].id);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (restaurant && isOpen) {
+      loadCategories();
+    }
+  }, [restaurant.id, isOpen, initialCategoryId]);
+
+  // Load category items from backend on selectedCatId change, but caching using loadedCatIds to prevent overwriting local edits
+  useEffect(() => {
+    if (!selectedCatId || !isOpen) {
+      setCategoryMenuItems([]);
+      return;
+    }
+
+    if (selectedCatId.startsWith('cat-') || loadedCatIds.includes(selectedCatId)) {
+      // Local fallback: use what is already in local state restaurant.menu
+      const localItems = restaurant.menu.filter(
+        item => (item.category || '').toLowerCase() === selectedCategoryName.toLowerCase()
+      );
+      setCategoryMenuItems(localItems);
+      return;
+    }
+
+    const fetchItems = async () => {
+      setIsLoading(true);
+      try {
+        const res = await api.get<CategoriesResponseDTO>(`/menu/categories/${selectedCatId}/edit`);
+        if (res.data && Array.isArray(res.data.items)) {
+          const mappedItems: MenuItem[] = res.data.items.map(it => ({
+            id: it.id,
+            name: it.name,
+            description: it.description || '',
+            price: Number(it.price),
+            imageUrl: it.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600',
+            category: res.data.name || selectedCategoryName,
+            isPopular: it.isFeatured || false,
+            options: it.options || [],
+            originalPrice: it.originalPrice || null,
+            isAvailable: it.isAvailable !== false,
+            displayOrder: it.displayOrder || 1
+          } as any));
+
+          // Merge mappedItems into global restaurant.menu state so they are preserved
+          const existingMenu = [...restaurant.menu];
+          mappedItems.forEach(mappedIt => {
+            const idx = existingMenu.findIndex(m => m.id === mappedIt.id);
+            if (idx >= 0) {
+              existingMenu[idx] = mappedIt;
+            } else {
+              existingMenu.push(mappedIt);
+            }
+          });
+
+          const updatedRestaurants = allRestaurants.map(r => {
+            if (r.id === restaurant.id) {
+              return { ...r, menu: existingMenu };
+            }
+            return r;
+          });
+          setRestaurants(updatedRestaurants);
+
+          setCategoryMenuItems(mappedItems);
+          setLoadedCatIds(prev => [...prev, selectedCatId]);
+        } else {
+          const localItems = restaurant.menu.filter(
+            item => (item.category || '').toLowerCase() === selectedCategoryName.toLowerCase()
+          );
+          setCategoryMenuItems(localItems);
+          setLoadedCatIds(prev => [...prev, selectedCatId]);
+        }
+      } catch (err) {
+        console.warn('Failed to load category menu items, falling back to local list:', err);
+        const localItems = restaurant.menu.filter(
+          item => (item.category || '').toLowerCase() === selectedCategoryName.toLowerCase()
+        );
+        setCategoryMenuItems(localItems);
+        setLoadedCatIds(prev => [...prev, selectedCatId]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchItems();
+  }, [selectedCatId, selectedCategoryName, restaurant.menu, isOpen, loadedCatIds]);
+
+  if (!isOpen) return null;
+
+  // Filter food items refers to the fetched state
+  const filteredMenuItems = categoryMenuItems;
 
   // --- CATEGORY OPERATIONS ---
   const handleAddCategory = (e: React.FormEvent) => {
@@ -291,7 +521,7 @@ export default function MenuManagementModal({
     setNewCatName('');
     setNewCatOrder(Number(newCatOrder) + 1);
     setIsAddingCat(false);
-    showToast('Đã thêm danh mục mới thành công!');
+    showToast('Đã thêm danh mục mới (Lưu nháp cục bộ). Hãy bấm "Đồng bộ toàn bộ" để lưu lên server.');
   };
 
   const handleStartEditCategory = (cat: CategoryDTO) => {
@@ -303,27 +533,36 @@ export default function MenuManagementModal({
   const handleSaveEditCategory = (catId: string) => {
     if (!editingCatName.trim()) return;
 
-    // Update local state
+    const oldCategory = categories.find(c => c.id === catId);
+    const oldName = oldCategory ? oldCategory.name : '';
+    const newName = editingCatName.trim();
+
     setCategories(prev => prev.map(c => {
       if (c.id === catId) {
-        return { ...c, name: editingCatName.trim(), displayOrder: Number(editingCatOrder) || 1 };
+        return { 
+          ...c, 
+          name: newName, 
+          displayOrder: Number(editingCatOrder) || 1
+        };
       }
       return c;
     }));
 
-    // Update menu items matching the old category name to the new name in context
-    const currentCatName = categories.find(c => c.id === catId)?.name || '';
-    if (currentCatName !== editingCatName.trim()) {
+    // If the category name changed, update the category string of all matching menu items in local state
+    if (oldName && oldName.toLowerCase() !== newName.toLowerCase()) {
       const updatedMenu = restaurant.menu.map(m => {
-        if (m.category === currentCatName) {
-          return { ...m, category: editingCatName.trim() };
+        if ((m.category || '').toLowerCase() === oldName.toLowerCase()) {
+          return { ...m, category: newName };
         }
         return m;
       });
 
       const updatedRestaurants = allRestaurants.map(r => {
         if (r.id === restaurant.id) {
-          return { ...r, menu: updatedMenu };
+          const currentTags = r.categories.map(tag => 
+            tag.toLowerCase() === oldName.toLowerCase() ? newName : tag
+          );
+          return { ...r, menu: updatedMenu, categories: currentTags };
         }
         return r;
       });
@@ -331,7 +570,7 @@ export default function MenuManagementModal({
     }
 
     setEditingCatId(null);
-    showToast('Cập nhật danh mục thành công!');
+    showToast('Đã sửa danh mục (Lưu nháp cục bộ). Hãy bấm "Đồng bộ toàn bộ" để lưu lên server.');
   };
 
   const handleDeleteCategory = (catId: string, name: string) => {
@@ -339,20 +578,21 @@ export default function MenuManagementModal({
       return;
     }
 
-    // Remove local category
     setCategories(prev => prev.filter(c => c.id !== catId));
 
-    // Wipe out restaurant menu items belonging to deleted category
-    const updatedMenu = restaurant.menu.filter(m => m.category !== name);
+    const updatedMenu = restaurant.menu.filter(m => (m.category || '').toLowerCase() !== name.toLowerCase());
     const updatedRestaurants = allRestaurants.map(r => {
       if (r.id === restaurant.id) {
-        return { ...r, menu: updatedMenu, categories: r.categories.filter(c => c !== name) };
+        return { 
+          ...r, 
+          menu: updatedMenu, 
+          categories: r.categories.filter(c => c.toLowerCase() !== name.toLowerCase()) 
+        };
       }
       return r;
     });
     setRestaurants(updatedRestaurants);
 
-    // Select another category if selected was wiped
     if (selectedCatId === catId) {
       const remaining = categories.filter(c => c.id !== catId);
       if (remaining.length > 0) {
@@ -362,7 +602,7 @@ export default function MenuManagementModal({
       }
     }
 
-    showToast(`Đã xóa danh mục "${name}" thành công.`);
+    showToast(`Đã xóa danh mục "${name}" (Lưu nháp cục bộ). Hãy bấm "Đồng bộ toàn bộ" để lưu lên server.`);
   };
 
   // --- MENU ITEM FORM TRIGGERS ---
@@ -482,6 +722,7 @@ export default function MenuManagementModal({
     let updatedMenu: MenuItem[] = [];
     if (activeItem === 'new') {
       updatedMenu = [savedLocalItem, ...restaurant.menu];
+      setCategoryMenuItems(prev => [savedLocalItem, ...prev]);
       showToast(`Đã thêm món mới "${itemName}" thành công!`);
     } else {
       updatedMenu = restaurant.menu.map(m => {
@@ -490,6 +731,7 @@ export default function MenuManagementModal({
         }
         return m;
       });
+      setCategoryMenuItems(prev => prev.map(m => m.id === itemId ? savedLocalItem : m));
       showToast(`Đã lưu thay đổi món "${itemName}" thành công!`);
     }
 
@@ -513,7 +755,6 @@ export default function MenuManagementModal({
   const handleDeleteMenuItem = (itemId: string, name: string) => {
     if (!confirm(`Bạn muốn xóa món "${name}" khỏi bếp?`)) return;
 
-    // Remove file if any
     setItemFiles(prev => {
       const copy = { ...prev };
       delete copy[itemId];
@@ -529,7 +770,8 @@ export default function MenuManagementModal({
     });
 
     setRestaurants(updatedRestaurants);
-    showToast(`Đã gỡ bỏ "${name}" khỏi bếp.`);
+    setCategoryMenuItems(prev => prev.filter(it => it.id !== itemId));
+    showToast(`Đã xóa món "${name}" (Lưu nháp cục bộ). Hãy bấm "Đồng bộ toàn bộ" để lưu lên server.`);
   };
 
   return (
@@ -567,7 +809,18 @@ export default function MenuManagementModal({
               title="Đồng bộ toàn bộ danh mục, món ăn, topping của đối tác lên máy chủ"
             >
               <CloudUpload className="w-4 h-4 shrink-0 text-emerald-100" />
-              <span>{isLoading ? 'Đang gửi...' : 'Đồng bộ lên máy chủ'}</span>
+              <span>{isLoading ? 'Đang gửi...' : 'Đồng bộ toàn bộ'}</span>
+            </button>
+
+            <button
+              onClick={handleSubmitSelectedCategory}
+              disabled={isLoading || !selectedCatId || selectedCatId.startsWith('cat-')}
+              type="button"
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 hover:shadow-md"
+              title="Lưu tất cả thay đổi bao gồm danh sách món ăn, topping của danh mục hiện tại lên máy chủ"
+            >
+              <Save className="w-4 h-4 shrink-0 text-orange-100" />
+              <span>Lưu danh mục này</span>
             </button>
 
             <button 

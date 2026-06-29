@@ -158,7 +158,7 @@ export default function Navbar({ cart, currentOrderCount, currentUser, onLogout 
                     <span className={`inline-block mt-2 text-[9px] font-extrabold px-1.5 py-0.5 rounded-sm uppercase tracking-wide ${
                       currentUser.role === UserRole.ADMIN
                         ? 'bg-red-50 text-red-650 border border-red-100'
-                        : currentUser.role === UserRole.PARTNER
+                        : currentUser.role === UserRole.RESTAURANT
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                         : 'bg-orange-50 text-orange-700 border border-orange-100'
                     }`}>
@@ -194,7 +194,7 @@ export default function Navbar({ cart, currentOrderCount, currentUser, onLogout 
                     </button>
                   )}
 
-                  {currentUser.role === UserRole.PARTNER && (
+                  {currentUser.role === UserRole.RESTAURANT && (
                     <button
                       onClick={() => {
                         setShowProfileDropdown(false);

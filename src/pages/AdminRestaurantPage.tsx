@@ -1338,7 +1338,7 @@ export default function AdminRestaurantsPage() {
                 </div>
               </div>
 
-              {/* SECTION IV: OWNER MANAGEMENT PARTNER RELATED */}
+              {/* SECTION IV: OWNER MANAGEMENT RESTAURANT RELATED */}
               <div className="space-y-3">
                 <h4 className="text-[10px] text-slate-700 font-extrabold tracking-wider uppercase border-b border-gray-200 pb-1">IV. Sở hữu & Trạng thái phân quyền kiểm duyệt</h4>
                 

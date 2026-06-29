@@ -107,15 +107,20 @@ export const createCategoryInBackend = async (payload: CategoriesRequestDTO): Pr
 
 export const deleteCategoryInBackend = async (categoryId: string): Promise<any> => {
   try {
-    const res = await api.delete(`/admin/categories/${categoryId}`);
+    const res = await api.delete(`/menu/categories/${categoryId}`);
     return res.data;
   } catch (err) {
-    console.warn('[MenuService] DELETE /admin/categories failed, falling back:', err);
+    console.warn('[MenuService] DELETE /menu/categories failed, falling back:', err);
     try {
-      const res = await api.delete(`/categories/${categoryId}`);
+      const res = await api.delete(`/admin/categories/${categoryId}`);
       return res.data;
     } catch {
-      return { success: true };
+      try {
+        const res = await api.delete(`/categories/${categoryId}`);
+        return res.data;
+      } catch {
+        return { success: true };
+      }
     }
   }
 };
@@ -137,17 +142,32 @@ export const createMenuItemInBackend = async (payload: MenuItemRequestDTO): Prom
 
 export const deleteMenuItemInBackend = async (menuItemId: string): Promise<any> => {
   try {
-    const res = await api.delete(`/admin/menu-items/${menuItemId}`);
+    const res = await api.delete(`/menu/menu-items/${menuItemId}`);
     return res.data;
   } catch (err) {
-    console.warn('[MenuService] DELETE /admin/menu-items failed, falling back:', err);
+    console.warn('[MenuService] DELETE /menu/menu-items failed, falling back:', err);
     try {
-      const res = await api.delete(`/menu-items/${menuItemId}`);
+      const res = await api.delete(`/admin/menu-items/${menuItemId}`);
       return res.data;
     } catch {
-      return { success: true };
+      try {
+        const res = await api.delete(`/menu-items/${menuItemId}`);
+        return res.data;
+      } catch {
+        return { success: true };
+      }
     }
   }
+};
+
+export const getCategoryForEdit = async (categoryId: string): Promise<CategoriesResponseDTO> => {
+  const res = await api.get<CategoriesResponseDTO>(`/menu/categories/${categoryId}/edit`);
+  return res.data;
+};
+
+export const updateCategoryInBackend = async (categoryId: string, payload: any): Promise<CategoriesResponseDTO> => {
+  const res = await api.put<CategoriesResponseDTO>(`/menu/categories/${categoryId}`, payload);
+  return res.data;
 };
 
 export interface FullMenuSubmitDTO {

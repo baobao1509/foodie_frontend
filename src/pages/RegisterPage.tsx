@@ -48,7 +48,7 @@ export default function RegisterPage() {
 
       await apiRegister(payload);
       
-      if (role === UserRole.PARTNER) {
+      if (role === UserRole.RESTAURANT) {
         setSuccessMessage('Đăng ký tài khoản Đối tác thành công! Đang chuyển hướng sang trang thiết lập thông tin Nhà hàng...');
         setTimeout(() => {
           navigate('/register-restaurant', { state: { email: email.trim(), fullName: fullName.trim() } });
@@ -153,7 +153,7 @@ export default function RegisterPage() {
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-xs font-bold text-gray-800 outline-hidden focus:ring-2 focus:ring-orange-500/10 appearance-none"
                 >
                   <option value={UserRole.CUSTOMER}>Khách hàng mua sắm (CUSTOMER)</option>
-                  <option value={UserRole.PARTNER}>Nhà hàng Đối tác (PARTNER)</option>
+                  <option value={UserRole.RESTAURANT}>Chủ Nhà Hàng (RESTAURANT)</option>
                   <option value={UserRole.ADMIN}>Quản trị viên (ADMIN)</option>
                 </select>
               </div>

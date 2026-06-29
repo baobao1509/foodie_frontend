@@ -103,8 +103,37 @@ export default function RegisterRestaurantPage() {
     );
   }
 
-  // 2. Second Validation: If user role is NOT CUSTOMER (e.g., they are already PARTNER or ADMIN)
-  if (currentUser.role !== UserRole.CUSTOMER) {
+  // 2. Second Validation: If user role is NOT CUSTOMER/RESTAURANT or if they already own a restaurant
+  const ownsRestaurant = restaurants.some(r => String(r.ownerId) === String(currentUser.id));
+  if (currentUser.role !== UserRole.CUSTOMER && currentUser.role !== UserRole.RESTAURANT && currentUser.role as string !== 'PARTNER') {
+    return (
+      <div className="bg-gray-50 min-h-screen py-24 px-4 flex flex-col justify-center items-center animate-fade-in">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-red-100 shadow-2xl p-8 text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-2 bg-red-500" />
+          
+          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-10 h-10 text-red-500" />
+          </div>
+
+          <h1 className="text-xl font-black text-gray-950 tracking-tight">
+            Quyền truy cập không hợp lệ
+          </h1>
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Tài khoản của bạn hiện có vai trò là <span className="font-extrabold text-red-700">{currentUser.role}</span>. Bạn không thể thiết lập thông tin nhà hàng mới.
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => navigate('/')}
+              className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold rounded-xl text-xs uppercase tracking-wide cursor-pointer w-full"
+            >
+              Quay lại Trang chủ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  } else if (ownsRestaurant) {
     return (
       <div className="bg-gray-50 min-h-screen py-24 px-4 flex flex-col justify-center items-center animate-fade-in">
         <div className="max-w-md w-full bg-white rounded-3xl border border-amber-100 shadow-2xl p-8 text-center relative overflow-hidden">
@@ -115,10 +144,10 @@ export default function RegisterRestaurantPage() {
           </div>
 
           <h1 className="text-xl font-black text-gray-950 tracking-tight">
-            Quyền truy cập không hợp lệ
+            Cửa hàng đã được thiết lập
           </h1>
           <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-            Tài khoản của bạn hiện có vai trò là <span className="font-extrabold text-amber-700">{currentUser.role}</span>. Trang thiết lập thông tin nhà hàng mới chỉ dành riêng cho tài khoản có vai trò Khách hàng thường (<span className="font-bold">CUSTOMER</span>) muốn đăng ký bán hàng.
+            Tài khoản của bạn đã sở hữu một cửa hàng trong hệ thống. Quý đối tác vui lòng truy cập Kênh Nhà Hàng để quản lý danh mục, món ăn, và cấu hình topping.
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
@@ -126,7 +155,7 @@ export default function RegisterRestaurantPage() {
               onClick={() => navigate('/partner')}
               className="px-6 py-3 bg-amber-600 hover:bg-amber-750 text-white font-bold rounded-xl text-xs uppercase tracking-wide cursor-pointer w-full"
             >
-              Vào Partner Dashboard
+              Vào Kênh Nhà Hàng
             </button>
             <button
               onClick={() => navigate('/')}
@@ -298,7 +327,7 @@ export default function RegisterRestaurantPage() {
       // GET /api/v1/upload/presign with query params folder, fileName, contentType, fileSize, checksum
       const presignRes = await api.get('/upload/presign', {
         params: {
-          folder: 'restaurant-cover-images',
+          folder: 'restaurants',
           fileName: selectedFile.name,
           contentType: selectedFile.type,
           fileSize: selectedFile.size, // Pass fileSize to backend so it can double check

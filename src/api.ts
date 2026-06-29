@@ -16,6 +16,7 @@ export { login, register, logout } from './services/authService';
 // Re-export Restaurant operations
 export {
   getRestaurants,
+  getMyRestaurant,
   createRestaurant,
   updateRestaurantStatusInBackend,
   deleteRestaurantInBackend
@@ -36,7 +37,9 @@ export {
   deleteMenuItemInBackend,
   submitFullMenuToBackend,
   getMenuInitialForRestaurant,
-  getMenuItemsByCategory
+  getMenuItemsByCategory,
+  getCategoryForEdit,
+  updateCategoryInBackend
 } from './services/categoryService';
 
 export type {

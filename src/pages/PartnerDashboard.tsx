@@ -8,7 +8,8 @@ import {
   getMenuInitialForRestaurant,
   getMenuItemsByCategory,
   CategoriesResponseDTO,
-  MenuItemResponseDTO
+  MenuItemResponseDTO,
+  getMyRestaurant
 } from '../api';
 
 export default function PartnerDashboard() {
@@ -25,25 +26,80 @@ export default function PartnerDashboard() {
 
   // Choose which restaurant inside partner credentials dashboard
   const [selectedResId, setSelectedResId] = useState('');
+  const [myRestaurant, setMyRestaurant] = useState<Restaurant | null>(null);
+  const [isResLoading, setIsResLoading] = useState(false);
+  const [resError, setResError] = useState('');
 
-  // Tự động đồng bộ và lựa chọn nhà hàng thuộc sở hữu của đối tác hoặc nhà hàng hợp lệ từ DB
+  // Tự động đồng bộ và lựa chọn nhà hàng thuộc sở hữu của đối tác hoặc nhà hàng hợp lệ từ DB bằng API getMyRestaurant
   useEffect(() => {
-    if (restaurants.length > 0) {
-      if (currentUser && currentUser.role === 'PARTNER') {
-        const myStore = restaurants.find(r => String(r.ownerId) === String(currentUser.id));
-        if (myStore) {
-          setSelectedResId(myStore.id);
-          return;
+    let isCancelled = false;
+
+    if (currentUser && currentUser.role === 'RESTAURANT') {
+      const fetchMyStore = async () => {
+        setIsResLoading(true);
+        setResError('');
+        try {
+          const res = await getMyRestaurant();
+          if (isCancelled) return;
+          if (res) {
+            setMyRestaurant(res);
+            setSelectedResId(res.id);
+            const exists = restaurants.some(r => r.id === res.id);
+            const nextList = exists
+              ? restaurants.map(r => r.id === res.id ? res : r)
+              : [...restaurants, res];
+            setRestaurants(nextList);
+          } else {
+            setResError('Không tìm thấy nhà hàng nào liên kết với tài khoản này.');
+          }
+        } catch (err) {
+          console.error('Failed to load my restaurant via API:', err);
+          if (!isCancelled) {
+            setResError('Không thể tải thông tin nhà hàng từ máy chủ.');
+            // Fallback: check if we already have it in context list
+            const fallback = restaurants.find(r => String(r.ownerId) === String(currentUser.id));
+            if (fallback) {
+              setMyRestaurant(fallback);
+              setSelectedResId(fallback.id);
+            }
+          }
+        } finally {
+          if (!isCancelled) setIsResLoading(false);
+        }
+      };
+
+      fetchMyStore();
+    } else {
+      // Admin hoặc các vai trò khác: chọn nhà hàng đầu tiên hoặc giữ nguyên lựa chọn hợp lệ
+      if (restaurants.length > 0) {
+        const isValid = restaurants.some(r => r.id === selectedResId);
+        if (!isValid) {
+          const firstRes = restaurants[0];
+          setMyRestaurant(firstRes);
+          setSelectedResId(firstRes.id);
+        } else {
+          const current = restaurants.find(r => r.id === selectedResId);
+          if (current) {
+            setMyRestaurant(current);
+          }
         }
       }
-      
-      // Kiểm tra xem ID đã chọn hiện tại có hợp lệ trong danh sách mới không
-      const isValid = restaurants.some(r => r.id === selectedResId);
-      if (!isValid) {
-        setSelectedResId(restaurants[0].id);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentUser, restaurants.length]);
+
+  // Đồng bộ trạng thái nhà hàng cục bộ từ danh sách Context khi có cập nhật
+  useEffect(() => {
+    if (selectedResId && restaurants.length > 0) {
+      const updated = restaurants.find(r => r.id === selectedResId);
+      if (updated) {
+        setMyRestaurant(updated);
       }
     }
-  }, [restaurants, currentUser, selectedResId]);
+  }, [restaurants, selectedResId]);
 
   // Modal open status for detailed master detail menu
   const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
@@ -53,7 +109,7 @@ export default function PartnerDashboard() {
   const [isMenuLoading, setIsMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState('');
 
-  const activeRes = restaurants.find(r => r.id === selectedResId);
+  const activeRes = myRestaurant;
   const activeResOrders = orders.filter(o => o.restaurantId === selectedResId);
 
   const formatMoney = (value: number | string | null | undefined) => {
@@ -145,7 +201,16 @@ export default function PartnerDashboard() {
           </p>
         </div>
 
-        {activeRes ? (
+        {isResLoading ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 p-8 shadow-xs flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
+            <p className="text-gray-500 font-semibold text-sm">Đang tải thông tin nhà hàng...</p>
+          </div>
+        ) : resError ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-red-100 p-8 shadow-xs">
+            <p className="text-red-500 font-semibold text-sm">{resError}</p>
+          </div>
+        ) : activeRes ? (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
