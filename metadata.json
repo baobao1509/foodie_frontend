@@ -1,6 +1,6 @@
 {
   "name": "FoodieVN",
   "description": "Hệ thống đặt món ăn trực tuyến FoodieVN với đầy đủ màn hình thực đơn, giỏ hàng, thanh toán và theo dõi đơn hàng.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

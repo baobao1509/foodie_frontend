@@ -130,6 +130,11 @@ export const deleteMenuItemInBackend = async (menuItemId: string): Promise<any> 
   return res.data;
 };
 
+export const switchMenuItemStatusInBackend = async (menuItemId: string): Promise<any> => {
+  const res = await api.put(`/menu/menu-items/${menuItemId}`);
+  return res.data;
+};
+
 export const getCategoryForEdit = async (categoryId: string): Promise<CategoriesResponseDTO> => {
   const res = await api.get<CategoriesResponseDTO>(`/menu/categories/${categoryId}/edit`);
   return res.data;

@@ -12,7 +12,9 @@ import {
   CategoriesResponseDTO,
   MenuItemResponseDTO,
   getMyRestaurant,
-  deleteCategoryInBackend
+  deleteCategoryInBackend,
+  deleteMenuItemInBackend,
+  switchMenuItemStatusInBackend
 } from '../api';
 
 export default function PartnerDashboard() {
@@ -113,7 +115,10 @@ export default function PartnerDashboard() {
   const [isMenuLoading, setIsMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState('');
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleteMenuItemConfirmOpen, setIsDeleteMenuItemConfirmOpen] = useState(false);
+  const [menuItemToDelete, setMenuItemToDelete] = useState<MenuItemResponseDTO | null>(null);
   const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+  const [isDeletingMenuItem, setIsDeletingMenuItem] = useState(false);
 
   const handleDeleteCategory = async () => {
     if (!selectedCategoryId) return;
@@ -130,6 +135,36 @@ export default function PartnerDashboard() {
       setIsDeleteConfirmOpen(false);
     } finally {
       setIsDeletingCategory(false);
+    }
+  };
+
+  const handleDeleteMenuItem = async () => {
+    if (!menuItemToDelete) return;
+    setMenuError('');
+    setIsDeletingMenuItem(true);
+    try {
+      await deleteMenuItemInBackend(menuItemToDelete.id);
+      setIsDeleteMenuItemConfirmOpen(false);
+      setMenuItemToDelete(null);
+      await handleRefreshMenu(selectedCategoryId);
+    } catch (err: any) {
+      console.error('Lỗi xóa món ăn:', err);
+      setMenuError(err.response?.data?.message || 'Không thể xóa món ăn lúc này. Vui lòng thử lại sau.');
+      setIsDeleteMenuItemConfirmOpen(false);
+      setMenuItemToDelete(null);
+    } finally {
+      setIsDeletingMenuItem(false);
+    }
+  };
+
+  const handleToggleMenuItemStatus = async (menuItem: MenuItemResponseDTO) => {
+    setMenuError('');
+    try {
+      await switchMenuItemStatusInBackend(menuItem.id);
+      await handleRefreshMenu(selectedCategoryId);
+    } catch (err: any) {
+      console.error('Lỗi chuyển trạng thái món ăn:', err);
+      setMenuError(err.response?.data?.message || 'Không thể chuyển trạng thái món ăn lúc này. Vui lòng thử lại sau.');
     }
   };
 
@@ -510,7 +545,7 @@ export default function PartnerDashboard() {
                         .map((food) => {
                           const optionGroups = getOptionGroups(food);
                           return (
-                            <div key={food.id} className="p-3.5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:border-gray-150 transition-all text-left">
+                            <div key={food.id} className={`p-3.5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:border-gray-150 transition-all text-left ${food.isAvailable === false ? 'opacity-60 grayscale' : ''}`}>
                               <div className="flex justify-between items-start gap-3">
                                 <div className="flex items-center gap-3 min-w-0">
                                   <img
@@ -542,13 +577,18 @@ export default function PartnerDashboard() {
                               </div>
 
                               <div className="mt-3 flex items-center justify-between gap-2">
-                                <span className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase ${
-                                  food.isAvailable === false
-                                    ? 'bg-red-50 text-red-600'
-                                    : 'bg-emerald-50 text-emerald-700'
-                                }`}>
-                                  {food.isAvailable === false ? 'Tam het mon' : 'Dang ban'}
-                                </span>
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleToggleMenuItemStatus(food)} className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase cursor-pointer ${
+                                    food.isAvailable === false
+                                      ? 'bg-red-50 text-red-600'
+                                      : 'bg-emerald-50 text-emerald-700'
+                                  }`}>
+                                    {food.isAvailable === false ? 'Tam het mon' : 'Dang ban'}
+                                  </button>
+                                  <button onClick={() => { setMenuItemToDelete(food); setIsDeleteMenuItemConfirmOpen(true); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Xóa món">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                                 <span className="text-[10px] font-bold text-gray-400">Order #{food.displayOrder ?? 0}</span>
                               </div>
 
@@ -609,6 +649,18 @@ export default function PartnerDashboard() {
                 isLoading={isDeletingCategory}
               />
             )}
+
+            <ConfirmDialog
+              isOpen={isDeleteMenuItemConfirmOpen}
+              onClose={() => { setIsDeleteMenuItemConfirmOpen(false); setMenuItemToDelete(null); }}
+              onConfirm={handleDeleteMenuItem}
+              title="Xác nhận xóa món ăn"
+              message={`Bạn có chắc chắn muốn xóa món ăn "${menuItemToDelete?.name || ''}"? Hành động này sẽ xóa vĩnh viễn món ăn khỏi thực đơn và không thể hoàn tác.`}
+              confirmText="Xóa vĩnh viễn"
+              cancelText="Hủy bỏ"
+              type="danger"
+              isLoading={isDeletingMenuItem}
+            />
           </>
         ) : (
           <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 p-8 shadow-xs">

@@ -11,11 +11,46 @@ export default function HomePage() {
   const { restaurants, setRestaurants } = useOutletContext<AppContextType>();
   const navigate = useNavigate();
 
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [nearFoods, setNearFoods] = useState<any[]>([]);
+  const [nearRestaurants, setNearRestaurants] = useState<any[]>([]);
+  const [isNearLoading, setIsNearLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('rating');
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+        }
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (location) {
+      setIsNearLoading(true);
+      // Actual API calls would be here
+      // api.get(`/foods/near?lat=${location.lat}&lng=${location.lng}`)...
+      // api.get(`/restaurants/near?lat=${location.lat}&lng=${location.lng}`)...
+      setTimeout(() => {
+        // Mocking responses to show UI in development
+        setNearFoods(restaurants.flatMap(r => r.menu).slice(0, 10));
+        setNearRestaurants(restaurants.slice(0, 10));
+        setIsNearLoading(false);
+      }, 1000);
+    }
+  }, [location, restaurants]);
 
   // Fetch restaurants directly in Homepage
   useEffect(() => {
@@ -132,6 +167,47 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+      
+      {/* ── Near You Section ── */}
+      {location && (
+        <div className="max-w-6xl mx-auto px-4 md:px-8 pt-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-6">Gần bạn nhất</h2>
+          {isNearLoading ? (
+            <div className="flex justify-center p-12">
+              <Loader className="w-8 h-8 animate-spin text-orange-500" />
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Near Foods */}
+              <div>
+                <h3 className="text-base font-bold text-gray-700 mb-4">Món ngon gần bạn</h3>
+                <div className="flex gap-4 overflow-x-auto pb-4">
+                  {nearFoods.map((food: any) => (
+                    <div key={food.id} className="min-w-[150px] w-[150px] bg-white rounded-2xl border border-gray-100 p-3 shadow-xs">
+                      <img src={food.imageUrl} alt={food.name} className="w-full h-24 object-cover rounded-xl mb-2" />
+                      <h4 className="text-sm font-semibold truncate">{food.name}</h4>
+                      <p className="text-xs text-gray-500">{food.price.toLocaleString('vi-VN')}đ</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Near Restaurants */}
+              <div>
+                <h3 className="text-base font-bold text-gray-700 mb-4">Nhà hàng gần bạn</h3>
+                <div className="flex gap-4 overflow-x-auto pb-4">
+                  {nearRestaurants.map((r: any) => (
+                    <div key={r.id} className="min-w-[200px] w-[200px] bg-white rounded-2xl border border-gray-100 p-3 shadow-xs">
+                      <img src={r.coverImageUrl} alt={r.name} className="w-full h-28 object-cover rounded-xl mb-2" />
+                      <h4 className="text-sm font-semibold truncate">{r.name}</h4>
+                      <p className="text-xs text-gray-500 truncate">{r.address}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Categories Navigation ── */}
       <div className="max-w-6xl mx-auto px-4 md:px-8 pt-8">

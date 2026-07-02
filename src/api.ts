@@ -35,6 +35,7 @@ export {
   deleteCategoryInBackend,
   createMenuItemInBackend,
   deleteMenuItemInBackend,
+  switchMenuItemStatusInBackend,
   submitFullMenuToBackend,
   getMenuInitialForRestaurant,
   getMenuItemsByCategory,
